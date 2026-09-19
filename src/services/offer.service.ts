@@ -15,7 +15,7 @@ interface OfferRow {
   created_at: string;
 }
 
-function toOffer(row: OfferRow): Offer {
+export function toOffer(row: OfferRow): Offer {
   let parsedConfig: Record<string, any> = {};
   let bodyText = row.body;
 
@@ -61,6 +61,7 @@ export async function getOffersForTenant(tenantId: string): Promise<Offer[]> {
 
 export async function createOffer(
   tenantId: string,
+  siteId: string | null,
   input: {
     title: string;
     body?: string;
@@ -88,11 +89,12 @@ export async function createOffer(
   });
 
   const rows = await query<OfferRow>(
-    `insert into offers (tenant_id, title, body, active, starts_at, ends_at)
-     values ($1, $2, $3, $4, $5, $6)
+    `insert into offers (tenant_id, site_id, title, body, active, starts_at, ends_at)
+     values ($1, $2, $3, $4, $5, $6, $7)
      returning *`,
     [
       tenantId,
+      siteId,
       input.title,
       payload,
       input.active ?? false,
@@ -166,4 +168,23 @@ export async function deleteOffer(tenantId: string, offerId: string): Promise<bo
     [tenantId, offerId]
   );
   return rows.length > 0;
+}
+
+/**
+ * The offer a tenant's website widget should show: the newest active offer
+ * (inside its start/end window) for the tenant that owns `siteKey`.
+ */
+export async function getActiveOfferForSiteKey(siteKey: string): Promise<Offer | null> {
+  const rows = await query<OfferRow>(
+    `select o.* from offers o
+     join sites s on s.tenant_id = o.tenant_id
+     where s.api_key = $1
+       and o.active = true
+       and (o.starts_at is null or o.starts_at <= now())
+       and (o.ends_at is null or o.ends_at >= now())
+     order by o.created_at desc
+     limit 1`,
+    [siteKey]
+  );
+  return rows[0] ? toOffer(rows[0]) : null;
 }

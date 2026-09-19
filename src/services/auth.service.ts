@@ -6,7 +6,9 @@
 // everything the rest of the product needs already in place.
 
 import bcrypt from "bcryptjs";
-import { pool, query, DatabaseNotConfiguredError } from "../config/db";
+import { pool, query } from "../config/db";
+import { DatabaseNotConfiguredError, EmailInUseError, InvalidCredentialsError } from "../utils/errors";
+import { toSite, type SiteRow } from "./site.service";
 import type { AuthUser, LoginInput, Site, SignupInput } from "../types";
 
 interface UserRow {
@@ -15,29 +17,6 @@ interface UserRow {
   email: string;
   password_hash: string;
   role: string;
-}
-
-interface SiteRow {
-  id: string;
-  tenant_id: string;
-  domain: string | null;
-  api_key: string;
-  settings: Record<string, unknown>;
-  created_at: string;
-}
-
-export class EmailInUseError extends Error {
-  constructor() {
-    super("An account with this email already exists.");
-    this.name = "EmailInUseError";
-  }
-}
-
-export class InvalidCredentialsError extends Error {
-  constructor() {
-    super("Invalid email or password.");
-    this.name = "InvalidCredentialsError";
-  }
 }
 
 function toAuthUser(row: UserRow): AuthUser {
@@ -110,15 +89,4 @@ export async function login(input: LoginInput): Promise<AuthUser> {
   if (!ok) throw new InvalidCredentialsError();
 
   return toAuthUser(row);
-}
-
-function toSite(row: SiteRow): Site {
-  return {
-    id: row.id,
-    tenantId: row.tenant_id,
-    domain: row.domain,
-    apiKey: row.api_key,
-    settings: row.settings,
-    createdAt: row.created_at,
-  };
 }

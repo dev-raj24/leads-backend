@@ -5,147 +5,84 @@ import type { Request, Response } from "express";
 import * as blogService from "../services/blog.service";
 import * as siteService from "../services/site.service";
 import type { BlogPostStatus } from "../types";
+import { asyncHandler } from "../utils/asyncHandler";
+import { badRequest, notFound } from "../utils/errors";
+import { isNonEmptyString, optionalString } from "../utils/validate";
 
-function isNonEmptyString(v: unknown): v is string {
-  return typeof v === "string" && v.trim().length > 0;
-}
-
-function isValidStatus(v: unknown): v is BlogPostStatus {
-  return v === "draft" || v === "published";
-}
+const isValidStatus = (v: unknown): v is BlogPostStatus => v === "draft" || v === "published";
 
 /** POST /api/blog/generate — { topic } -> { draft: { title, excerpt, content } } */
-export async function generate(req: Request, res: Response) {
-  if (!req.tenantId) return res.status(401).json({ error: "missing_tenant" });
-
-  const { topic } = req.body ?? {};
-  if (!isNonEmptyString(topic)) {
-    return res.status(400).json({ error: "missing_topic" });
-  }
-
-  try {
-    const draft = await blogService.generateDraft(topic.trim());
-    return res.json({ draft });
-  } catch (err) {
-    console.error("[blog.controller.generate]", err);
-    return res.status(500).json({ error: "generation_failed" });
-  }
-}
+export const generate = asyncHandler(async (req: Request, res: Response) => {
+  const topic = optionalString(req.body?.topic);
+  if (!topic) throw badRequest("missing_topic");
+  res.json({ draft: await blogService.generateDraft(topic) });
+});
 
 /** GET /api/blog — the owner's own posts, draft + published. */
-export async function list(req: Request, res: Response) {
-  if (!req.tenantId) return res.status(401).json({ error: "missing_tenant" });
-  try {
-    const posts = await blogService.getBlogPostsForTenant(req.tenantId);
-    return res.json({ posts });
-  } catch (err) {
-    console.error("[blog.controller.list]", err);
-    return res.status(500).json({ error: "internal_error" });
-  }
-}
+export const list = asyncHandler(async (req: Request, res: Response) => {
+  res.json({ posts: await blogService.getBlogPostsForTenant(req.tenantId!) });
+});
 
 /** GET /api/blog/:id */
-export async function getOne(req: Request, res: Response) {
-  if (!req.tenantId) return res.status(401).json({ error: "missing_tenant" });
-  try {
-    const post = await blogService.getBlogPostById(req.tenantId, req.params.id);
-    if (!post) return res.status(404).json({ error: "not_found" });
-    return res.json({ post });
-  } catch (err) {
-    console.error("[blog.controller.getOne]", err);
-    return res.status(500).json({ error: "internal_error" });
-  }
-}
+export const getOne = asyncHandler(async (req: Request, res: Response) => {
+  const post = await blogService.getBlogPostById(req.tenantId!, req.params.id);
+  if (!post) throw notFound();
+  res.json({ post });
+});
 
 /** POST /api/blog — { title, excerpt?, content, status?, aiGenerated? } */
-export async function create(req: Request, res: Response) {
-  if (!req.tenantId) return res.status(401).json({ error: "missing_tenant" });
-
+export const create = asyncHandler(async (req: Request, res: Response) => {
   const { title, excerpt, content, status, aiGenerated } = req.body ?? {};
-  if (!isNonEmptyString(title)) return res.status(400).json({ error: "missing_title" });
-  if (!isNonEmptyString(content)) return res.status(400).json({ error: "missing_content" });
-  if (status !== undefined && !isValidStatus(status)) {
-    return res.status(400).json({ error: "invalid_status" });
-  }
+  if (!isNonEmptyString(title)) throw badRequest("missing_title");
+  if (!isNonEmptyString(content)) throw badRequest("missing_content");
+  if (status !== undefined && !isValidStatus(status)) throw badRequest("invalid_status");
 
-  try {
-    const site = await siteService.getPrimarySiteForTenant(req.tenantId);
-    const post = await blogService.createBlogPost(req.tenantId, site?.id ?? null, {
-      title,
-      excerpt: isNonEmptyString(excerpt) ? excerpt : undefined,
-      content,
-      status,
-      aiGenerated: Boolean(aiGenerated),
-    });
-    return res.status(201).json({ post });
-  } catch (err) {
-    console.error("[blog.controller.create]", err);
-    return res.status(500).json({ error: "internal_error" });
-  }
-}
+  const site = await siteService.getPrimarySiteForTenant(req.tenantId!);
+  const post = await blogService.createBlogPost(req.tenantId!, site?.id ?? null, {
+    title,
+    excerpt: optionalString(excerpt),
+    content,
+    status,
+    aiGenerated: Boolean(aiGenerated),
+  });
+  res.status(201).json({ post });
+});
 
 /** PATCH /api/blog/:id — { title?, excerpt?, content?, status? } */
-export async function update(req: Request, res: Response) {
-  if (!req.tenantId) return res.status(401).json({ error: "missing_tenant" });
-
+export const update = asyncHandler(async (req: Request, res: Response) => {
   const { title, excerpt, content, status } = req.body ?? {};
-  if (status !== undefined && !isValidStatus(status)) {
-    return res.status(400).json({ error: "invalid_status" });
-  }
+  if (status !== undefined && !isValidStatus(status)) throw badRequest("invalid_status");
 
-  try {
-    const post = await blogService.updateBlogPost(req.tenantId, req.params.id, {
-      title: isNonEmptyString(title) ? title : undefined,
-      excerpt: typeof excerpt === "string" ? excerpt : undefined,
-      content: isNonEmptyString(content) ? content : undefined,
-      status,
-    });
-    if (!post) return res.status(404).json({ error: "not_found" });
-    return res.json({ post });
-  } catch (err) {
-    console.error("[blog.controller.update]", err);
-    return res.status(500).json({ error: "internal_error" });
-  }
-}
+  const post = await blogService.updateBlogPost(req.tenantId!, req.params.id, {
+    title: optionalString(title),
+    excerpt: typeof excerpt === "string" ? excerpt : undefined,
+    content: optionalString(content),
+    status,
+  });
+  if (!post) throw notFound();
+  res.json({ post });
+});
 
 /** DELETE /api/blog/:id */
-export async function remove(req: Request, res: Response) {
-  if (!req.tenantId) return res.status(401).json({ error: "missing_tenant" });
-  try {
-    const deleted = await blogService.deleteBlogPost(req.tenantId, req.params.id);
-    if (!deleted) return res.status(404).json({ error: "not_found" });
-    return res.json({ ok: true });
-  } catch (err) {
-    console.error("[blog.controller.remove]", err);
-    return res.status(500).json({ error: "internal_error" });
-  }
-}
+export const remove = asyncHandler(async (req: Request, res: Response) => {
+  if (!(await blogService.deleteBlogPost(req.tenantId!, req.params.id))) throw notFound();
+  res.json({ ok: true });
+});
 
 // ---- public — the embed script on the tenant's own website reads these ---
 
 /** GET /api/public/blog?siteKey=... — published posts only. */
-export async function publicList(req: Request, res: Response) {
+export const publicList = asyncHandler(async (req: Request, res: Response) => {
   const siteKey = req.query.siteKey;
-  if (!isNonEmptyString(siteKey)) return res.status(400).json({ error: "missing_site_key" });
-  try {
-    const posts = await blogService.getPublishedPostsForSiteKey(siteKey);
-    return res.json({ posts });
-  } catch (err) {
-    console.error("[blog.controller.publicList]", err);
-    return res.status(500).json({ error: "internal_error" });
-  }
-}
+  if (!isNonEmptyString(siteKey)) throw badRequest("missing_site_key");
+  res.json({ posts: await blogService.getPublishedPostsForSiteKey(siteKey) });
+});
 
 /** GET /api/public/blog/:slug?siteKey=... — a single published post. */
-export async function publicGet(req: Request, res: Response) {
+export const publicGet = asyncHandler(async (req: Request, res: Response) => {
   const siteKey = req.query.siteKey;
-  if (!isNonEmptyString(siteKey)) return res.status(400).json({ error: "missing_site_key" });
-  try {
-    const post = await blogService.getPublishedPostBySlug(siteKey, req.params.slug);
-    if (!post) return res.status(404).json({ error: "not_found" });
-    return res.json({ post });
-  } catch (err) {
-    console.error("[blog.controller.publicGet]", err);
-    return res.status(500).json({ error: "internal_error" });
-  }
-}
+  if (!isNonEmptyString(siteKey)) throw badRequest("missing_site_key");
+  const post = await blogService.getPublishedPostBySlug(siteKey, req.params.slug);
+  if (!post) throw notFound();
+  res.json({ post });
+});

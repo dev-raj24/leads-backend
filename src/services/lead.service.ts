@@ -3,6 +3,7 @@
 // and every leads query is scoped by tenant_id.
 
 import { query } from "../config/db";
+import { InvalidSiteKeyError } from "../utils/errors";
 import type { IngestLeadInput, Lead, LeadStatus } from "../types";
 
 interface SiteRow {
@@ -40,13 +41,6 @@ function toLead(row: LeadRow): Lead {
     createdAt: row.created_at,
     lastActivityAt: row.last_activity_at,
   };
-}
-
-export class InvalidSiteKeyError extends Error {
-  constructor() {
-    super("Invalid or unknown site key.");
-    this.name = "InvalidSiteKeyError";
-  }
 }
 
 /**
@@ -126,7 +120,7 @@ export async function updateLeadStatus(
 
 export async function bulkCreateLeads(
   tenantId: string,
-  siteId: string,
+  siteId: string | null,
   leads: Array<{ name?: string; contact: string; message?: string; source: string; customFields?: Record<string, unknown> }>
 ): Promise<Lead[]> {
   if (leads.length === 0) return [];

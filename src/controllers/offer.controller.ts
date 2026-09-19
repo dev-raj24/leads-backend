@@ -2,95 +2,83 @@
 
 import type { Request, Response } from "express";
 import * as offerService from "../services/offer.service";
+import * as siteService from "../services/site.service";
+import { asyncHandler } from "../utils/asyncHandler";
+import { badRequest, notFound } from "../utils/errors";
+import { isNonEmptyString } from "../utils/validate";
 
-export async function list(req: Request, res: Response) {
-  const tenantId = req.tenantId;
-  if (!tenantId) return res.status(401).json({ error: "missing_tenant" });
-
-  try {
-    const offers = await offerService.getOffersForTenant(tenantId);
-    return res.json({ offers });
-  } catch (err) {
-    console.error("[offer.controller.list]", err);
-    return res.status(500).json({ error: "internal_error" });
-  }
+/** The presentation fields shared by create + update. Accepts legacy link aliases. */
+function pickOfferConfig(body: Record<string, any>) {
+  const {
+    color, displayMode, styleVariant, actionType, promoCode,
+    targetUrl, linkUrl, redirectUrl, whatsappNumber,
+  } = body;
+  return {
+    color, displayMode, styleVariant, actionType, promoCode, whatsappNumber,
+    targetUrl: targetUrl || linkUrl || redirectUrl,
+  };
 }
 
-export async function create(req: Request, res: Response) {
-  const tenantId = req.tenantId;
-  if (!tenantId) return res.status(401).json({ error: "missing_tenant" });
+export const list = asyncHandler(async (req: Request, res: Response) => {
+  res.json({ offers: await offerService.getOffersForTenant(req.tenantId!) });
+});
 
-  const { title, body, active, startsAt, endsAt, color, displayMode, styleVariant, actionType, promoCode, targetUrl, linkUrl, redirectUrl, whatsappNumber } = req.body;
-  if (typeof title !== "string" || !title.trim()) {
-    return res.status(400).json({ error: "missing_title" });
-  }
+export const create = asyncHandler(async (req: Request, res: Response) => {
+  const body = req.body ?? {};
+  if (!isNonEmptyString(body.title)) throw badRequest("missing_title");
 
-  const finalTargetUrl = targetUrl || linkUrl || redirectUrl;
+  const site = await siteService.getPrimarySiteForTenant(req.tenantId!);
+  const offer = await offerService.createOffer(req.tenantId!, site?.id ?? null, {
+    title: body.title.trim(),
+    body: body.body,
+    active: body.active,
+    startsAt: body.startsAt,
+    endsAt: body.endsAt,
+    ...pickOfferConfig(body),
+  });
+  res.status(201).json({ offer });
+});
 
-  try {
-    const offer = await offerService.createOffer(tenantId, {
-      title,
-      body,
-      active,
-      startsAt,
-      endsAt,
-      color,
-      displayMode,
-      styleVariant,
-      actionType,
-      promoCode,
-      targetUrl: finalTargetUrl,
-      whatsappNumber,
-    });
-    return res.status(201).json({ offer });
-  } catch (err) {
-    console.error("[offer.controller.create]", err);
-    return res.status(500).json({ error: "internal_error" });
-  }
-}
+export const update = asyncHandler(async (req: Request, res: Response) => {
+  const body = req.body ?? {};
+  const offer = await offerService.updateOffer(req.tenantId!, req.params.id, {
+    active: body.active,
+    title: body.title,
+    body: body.body,
+    ...pickOfferConfig(body),
+  });
+  if (!offer) throw notFound();
+  res.json({ offer });
+});
 
-export async function update(req: Request, res: Response) {
-  const tenantId = req.tenantId;
-  if (!tenantId) return res.status(401).json({ error: "missing_tenant" });
+export const remove = asyncHandler(async (req: Request, res: Response) => {
+  if (!(await offerService.deleteOffer(req.tenantId!, req.params.id))) throw notFound();
+  res.json({ ok: true });
+});
 
-  const { id } = req.params;
-  const { active, title, body, color, displayMode, styleVariant, actionType, promoCode, targetUrl, linkUrl, redirectUrl, whatsappNumber } = req.body;
+const ACTION_TEXT: Record<string, string> = {
+  whatsapp: "Chat on WhatsApp",
+  promo: "Get the code",
+  link: "Claim offer",
+};
 
-  const finalTargetUrl = targetUrl || linkUrl || redirectUrl;
+/** GET /api/public/widget-config?siteKey= — what the website widget shows (no login). */
+export const publicWidgetConfig = asyncHandler(async (req: Request, res: Response) => {
+  const siteKey = req.query.siteKey;
+  if (!isNonEmptyString(siteKey)) throw badRequest("missing_site_key");
 
-  try {
-    const offer = await offerService.updateOffer(tenantId, id, {
-      active,
-      title,
-      body,
-      color,
-      displayMode,
-      styleVariant,
-      actionType,
-      promoCode,
-      targetUrl: finalTargetUrl,
-      whatsappNumber,
-    });
-    if (!offer) return res.status(404).json({ error: "not_found" });
-    return res.json({ offer });
-  } catch (err) {
-    console.error("[offer.controller.update]", err);
-    return res.status(500).json({ error: "internal_error" });
-  }
-}
-
-export async function remove(req: Request, res: Response) {
-  const tenantId = req.tenantId;
-  if (!tenantId) return res.status(401).json({ error: "missing_tenant" });
-
-  const { id } = req.params;
-
-  try {
-    const deleted = await offerService.deleteOffer(tenantId, id);
-    if (!deleted) return res.status(404).json({ error: "not_found" });
-    return res.json({ ok: true });
-  } catch (err) {
-    console.error("[offer.controller.remove]", err);
-    return res.status(500).json({ error: "internal_error" });
-  }
-}
+  const offer = await offerService.getActiveOfferForSiteKey(siteKey);
+  res.json({
+    offer: offer && {
+      title: offer.title,
+      body: offer.body ?? "",
+      displayMode: offer.displayMode ?? "top",
+      color: offer.color,
+      actionType: offer.actionType,
+      actionText: ACTION_TEXT[offer.actionType ?? "link"] ?? ACTION_TEXT.link,
+      targetUrl: offer.targetUrl,
+      whatsappNumber: offer.whatsappNumber,
+      promoCode: offer.promoCode,
+    },
+  });
+});

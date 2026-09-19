@@ -4,6 +4,9 @@ import { requireAuth } from "../middleware/auth.middleware";
 
 export const offerRoutes = Router();
 
+// Public — the site widget reads its live offer with a site key, no login.
+offerRoutes.get("/public/widget-config", offerController.publicWidgetConfig);
+
 // Owner-portal routes — require a signed-in session (JWT).
 offerRoutes.get("/offers", requireAuth, offerController.list);
 offerRoutes.post("/offers", requireAuth, offerController.create);

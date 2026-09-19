@@ -1,6 +1,7 @@
 // config/db.ts — PostgreSQL connection pool and query helper.
 import { Pool } from "pg";
 import { env } from "./env";
+import { DatabaseNotConfiguredError } from "../utils/errors";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -19,15 +20,6 @@ function createPool(): Pool | null {
 // Reuse the pool across hot-reloads in dev
 export const pool = global.__leadworksPool ?? createPool();
 if (!env.isProd) global.__leadworksPool = pool ?? undefined;
-
-export class DatabaseNotConfiguredError extends Error {
-  constructor() {
-    super(
-      "DATABASE_URL is not set. Add it to .env to connect a Postgres database."
-    );
-    this.name = "DatabaseNotConfiguredError";
-  }
-}
 
 /** Thin query helper every service calls. Always parametrized ($1, $2 ...). */
 export async function query<T = unknown>(

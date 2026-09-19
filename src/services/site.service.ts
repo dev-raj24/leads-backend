@@ -3,7 +3,7 @@
 import { query } from "../config/db";
 import type { Site } from "../types";
 
-interface SiteRow {
+export interface SiteRow {
   id: string;
   tenant_id: string;
   domain: string | null;
@@ -12,7 +12,7 @@ interface SiteRow {
   created_at: string;
 }
 
-function toSite(row: SiteRow): Site {
+export function toSite(row: SiteRow): Site {
   return {
     id: row.id,
     tenantId: row.tenant_id,

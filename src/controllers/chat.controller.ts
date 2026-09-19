@@ -1,38 +1,24 @@
-import { Request, Response } from "express";
-import Anthropic from "@anthropic-ai/sdk";
+import type { Request, Response } from "express";
+import * as chatService from "../services/chat.service";
+import { asyncHandler } from "../utils/asyncHandler";
+import { badRequest } from "../utils/errors";
+import { isNonEmptyString } from "../utils/validate";
 
-export const chatWithAgent = async (req: Request, res: Response) => {
-  try {
-    const { messages } = req.body;
+const MAX_TURNS = 30;
 
-    if (!messages || !Array.isArray(messages)) {
-      return res.status(400).json({ error: "Messages array is required" });
-    }
+/** POST /api/chat — { messages: [{ role, content }] } -> { reply } */
+export const chatWithAgent = asyncHandler(async (req: Request, res: Response) => {
+  const messages = req.body?.messages;
+  if (!Array.isArray(messages) || messages.length === 0) throw badRequest("missing_messages");
 
-    const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY || "dummy", // defaults to process.env.ANTHROPIC_API_KEY
-    });
+  const turns = messages
+    .filter((m) => isNonEmptyString(m?.content))
+    .slice(-MAX_TURNS)
+    .map((m) => ({
+      role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
+      content: String(m.content),
+    }));
+  if (turns.length === 0) throw badRequest("missing_messages");
 
-   
-    const systemPrompt = `You are an AI co-pilot for a lead generation and CRM application called Leadworks. 
-You help users manage leads, draft replies, and summarize data.
-Be concise, helpful, and professional. Use emojis sparingly.`;
-
-    const response = await anthropic.messages.create({
-      model: "claude-3-haiku-20240307",
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: messages.map((m: any) => ({
-        role: m.role === "assistant" ? "assistant" : "user",
-        content: m.content,
-      })),
-    });
-
-    const reply = response.content[0].type === "text" ? response.content[0].text : "Sorry, I couldn't process that.";
-
-    res.json({ reply });
-  } catch (error: any) {
-    console.error("Chat error:", error);
-    res.status(500).json({ error: "Failed to process chat message" });
-  }
-};
+  res.json({ reply: await chatService.reply(turns) });
+});

@@ -2,8 +2,9 @@
 // Rule: raw SQL lives ONLY here. Every query is parametrized and every
 // owner-facing query is scoped by tenant_id.
 
-import Anthropic from "@anthropic-ai/sdk";
+import { completeText } from "../config/anthropic";
 import { query } from "../config/db";
+import { AppError } from "../utils/errors";
 import type { BlogDraft, BlogPost, BlogPostStatus } from "../types";
 
 interface BlogPostRow {
@@ -51,11 +52,8 @@ function slugify(title: string): string {
 
 /** AI-drafts a full post from a topic. Requires ANTHROPIC_API_KEY. */
 export async function generateDraft(topic: string): Promise<BlogDraft> {
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || "dummy" });
-
-  const response = await anthropic.messages.create({
-    model: "claude-3-haiku-20240307",
-    max_tokens: 2048,
+  const text = await completeText({
+    maxTokens: 2048,
     system:
       `You write blog posts for small local businesses (dental clinics, salons, real ` +
       `estate agents, coaches) using a product called Leadworks. Write a complete, ` +
@@ -64,10 +62,11 @@ export async function generateDraft(topic: string): Promise<BlogDraft> {
       `exactly like: {"title": "...", "excerpt": "one or two sentence summary", ` +
       `"content": "full post body, plain paragraphs separated by \\n\\n"}`,
     messages: [{ role: "user", content: `Topic: ${topic}` }],
+  }).catch((err) => {
+    if (err instanceof AppError) throw err;
+    console.error("[blog.generateDraft]", err);
+    throw new AppError(502, "generation_failed");
   });
-
-  const block = response.content[0];
-  const text = block && block.type === "text" ? block.text : "{}";
 
   try {
     const parsed = JSON.parse(text);
