@@ -3,6 +3,7 @@
 // owner-facing query is scoped by tenant_id.
 
 import { completeText } from "../config/anthropic";
+import { getBusinessProfile } from "./ai-config.service";
 import { query } from "../config/db";
 import { AppError } from "../utils/errors";
 import type { BlogDraft, BlogPost, BlogPostStatus } from "../types";
@@ -51,12 +52,14 @@ function slugify(title: string): string {
 }
 
 /** AI-drafts a full post from a topic. Requires ANTHROPIC_API_KEY. */
-export async function generateDraft(topic: string): Promise<BlogDraft> {
+export async function generateDraft(tenantId: string, topic: string): Promise<BlogDraft> {
+  const { businessName, profile } = await getBusinessProfile(tenantId);
   const text = await completeText({
     maxTokens: 2048,
     system:
       `You write blog posts for small local businesses (dental clinics, salons, real ` +
-      `estate agents, coaches) using a product called Leadworks. Write a complete, ` +
+      `estate agents, coaches) using a product called Leadworks. You are writing for ` +
+      `${businessName}${profile.about ? ` (${profile.about})` : ""}${profile.services ? `; services: ${profile.services}` : ""}. Write a complete, ` +
       `ready-to-publish post for the given topic — warm, helpful, locally relevant, no ` +
       `fluff. Respond with ONLY a JSON object, no markdown fences, no commentary, shaped ` +
       `exactly like: {"title": "...", "excerpt": "one or two sentence summary", ` +

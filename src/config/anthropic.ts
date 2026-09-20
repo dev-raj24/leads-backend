@@ -23,12 +23,17 @@ export async function completeText(opts: {
   messages: ChatTurn[];
   maxTokens: number;
 }): Promise<string> {
-  const response = await getClient().messages.create({
-    model: env.anthropicModel,
-    max_tokens: opts.maxTokens,
-    system: opts.system,
-    messages: opts.messages,
-  });
+  const response = await getClient()
+    .messages.create({
+      model: env.anthropicModel,
+      max_tokens: opts.maxTokens,
+      system: opts.system,
+      messages: opts.messages,
+    })
+    .catch((err) => {
+      console.error("[anthropic]", err?.status ?? "", err?.message ?? err);
+      throw new AppError(502, "ai_unavailable");
+    });
   const block = response.content[0];
   return block && block.type === "text" ? block.text : "";
 }

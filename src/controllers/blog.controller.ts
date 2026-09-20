@@ -7,7 +7,11 @@ import * as siteService from "../services/site.service";
 import type { BlogPostStatus } from "../types";
 import { asyncHandler } from "../utils/asyncHandler";
 import { badRequest, notFound } from "../utils/errors";
-import { isNonEmptyString, optionalString } from "../utils/validate";
+import { isNonEmptyString, limitLength, optionalString } from "../utils/validate";
+
+const MAX_TITLE = 200;
+const MAX_EXCERPT = 500;
+const MAX_CONTENT = 100_000;
 
 const isValidStatus = (v: unknown): v is BlogPostStatus => v === "draft" || v === "published";
 
@@ -15,7 +19,8 @@ const isValidStatus = (v: unknown): v is BlogPostStatus => v === "draft" || v ==
 export const generate = asyncHandler(async (req: Request, res: Response) => {
   const topic = optionalString(req.body?.topic);
   if (!topic) throw badRequest("missing_topic");
-  res.json({ draft: await blogService.generateDraft(topic) });
+  limitLength(topic, 300, "topic_too_long");
+  res.json({ draft: await blogService.generateDraft(req.tenantId!, topic) });
 });
 
 /** GET /api/blog — the owner's own posts, draft + published. */
@@ -36,6 +41,9 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
   if (!isNonEmptyString(title)) throw badRequest("missing_title");
   if (!isNonEmptyString(content)) throw badRequest("missing_content");
   if (status !== undefined && !isValidStatus(status)) throw badRequest("invalid_status");
+  limitLength(title, MAX_TITLE, "title_too_long");
+  limitLength(content, MAX_CONTENT, "content_too_long");
+  if (typeof excerpt === "string") limitLength(excerpt, MAX_EXCERPT, "excerpt_too_long");
 
   const site = await siteService.getPrimarySiteForTenant(req.tenantId!);
   const post = await blogService.createBlogPost(req.tenantId!, site?.id ?? null, {
@@ -52,6 +60,9 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
 export const update = asyncHandler(async (req: Request, res: Response) => {
   const { title, excerpt, content, status } = req.body ?? {};
   if (status !== undefined && !isValidStatus(status)) throw badRequest("invalid_status");
+  if (typeof title === "string") limitLength(title, MAX_TITLE, "title_too_long");
+  if (typeof content === "string") limitLength(content, MAX_CONTENT, "content_too_long");
+  if (typeof excerpt === "string") limitLength(excerpt, MAX_EXCERPT, "excerpt_too_long");
 
   const post = await blogService.updateBlogPost(req.tenantId!, req.params.id, {
     title: optionalString(title),

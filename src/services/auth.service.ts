@@ -6,6 +6,7 @@
 // everything the rest of the product needs already in place.
 
 import bcrypt from "bcryptjs";
+import { env } from "../config/env";
 import { pool, query } from "../config/db";
 import { DatabaseNotConfiguredError, EmailInUseError, InvalidCredentialsError } from "../utils/errors";
 import { toSite, type SiteRow } from "./site.service";
@@ -18,6 +19,8 @@ interface UserRow {
   password_hash: string;
   role: string;
 }
+
+const DUMMY_HASH = bcrypt.hashSync("leadworks-dummy-password", env.bcryptRounds);
 
 function toAuthUser(row: UserRow): AuthUser {
   return { id: row.id, tenantId: row.tenant_id, email: row.email, role: row.role };
@@ -33,7 +36,7 @@ export async function signup(
   ]);
   if (existing[0]) throw new EmailInUseError();
 
-  const passwordHash = await bcrypt.hash(input.password, 10);
+  const passwordHash = await bcrypt.hash(input.password, env.bcryptRounds);
 
   // Everything below belongs to one signup — run it as a single transaction
   // so a half-created tenant never gets left behind on failure.
@@ -83,10 +86,8 @@ export async function login(input: LoginInput): Promise<AuthUser> {
     input.email,
   ]);
   const row = rows[0];
-  if (!row) throw new InvalidCredentialsError();
-
-  const ok = await bcrypt.compare(input.password, row.password_hash);
-  if (!ok) throw new InvalidCredentialsError();
+  const ok = await bcrypt.compare(input.password, row?.password_hash ?? DUMMY_HASH);
+  if (!row || !ok) throw new InvalidCredentialsError();
 
   return toAuthUser(row);
 }
