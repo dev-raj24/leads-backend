@@ -9,6 +9,7 @@ import type { IngestLeadInput, Lead, LeadStatus } from "../types";
 interface SiteRow {
   id: string;
   tenant_id: string;
+  settings: Record<string, unknown> | null;
 }
 
 interface LeadRow {
@@ -43,22 +44,20 @@ function toLead(row: LeadRow): Lead {
   };
 }
 
-/**
- * A lead lands from a client's existing static site: the widget.js snippet
- * (or a swapped form action) POSTs here with the site's api_key. We resolve
- * the key to a tenant, insert a tenant-tagged lead, and log the event that
- * downstream jobs (alerts, AI auto-reply) react to.
- */
-export async function createFromSite(input: IngestLeadInput): Promise<Lead> {
-  // 1. GET — resolve site_key -> tenant (never trust a client-supplied tenant id)
+export interface IngestResult {
+  lead: Lead;
+  tenantId: string;
+  siteSettings: Record<string, unknown>;
+}
+
+export async function createFromSite(input: IngestLeadInput): Promise<IngestResult> {
   const sites = await query<SiteRow>(
-    `select id, tenant_id from sites where api_key = $1 limit 1`,
+    `select id, tenant_id, settings from sites where api_key = $1 limit 1`,
     [input.siteKey]
   );
   const site = sites[0];
   if (!site) throw new InvalidSiteKeyError();
 
-  // 2. USE — insert the lead, tenant-tagged
   const rows = await query<LeadRow>(
     `insert into leads (tenant_id, site_id, name, contact, message, source, status)
      values ($1, $2, $3, $4, $5, 'form', 'new')
@@ -67,13 +66,35 @@ export async function createFromSite(input: IngestLeadInput): Promise<Lead> {
   );
   const lead = toLead(rows[0]);
 
-  // 3. audit trail — alerts / AI auto-reply jobs subscribe to this event
-  await query(
-    `insert into lead_events (lead_id, type, payload) values ($1, 'created', $2::jsonb)`,
-    [lead.id, JSON.stringify({ source: "form", siteId: site.id })]
-  );
+  await recordEvent(lead.id, "created", { source: "form", siteId: site.id });
+  if (lead.message) {
+    await query(
+      `insert into messages (lead_id, channel, direction, body) values ($1, 'form', 'inbound', $2)`,
+      [lead.id, lead.message]
+    );
+  }
 
-  return lead;
+  return { lead, tenantId: site.tenant_id, siteSettings: site.settings ?? {} };
+}
+
+export async function recordEvent(leadId: string, type: string, payload: Record<string, unknown> = {}) {
+  await query(`insert into lead_events (lead_id, type, payload) values ($1, $2, $3::jsonb)`, [leadId, type, JSON.stringify(payload)]);
+}
+
+export async function getRecentLeads(tenantId: string, limit: number): Promise<Lead[]> {
+  const rows = await query<LeadRow>(
+    `select * from leads where tenant_id = $1 order by created_at desc limit $2`,
+    [tenantId, limit]
+  );
+  return rows.map(toLead);
+}
+
+export async function countLeadsByStatus(tenantId: string): Promise<Record<string, number>> {
+  const rows = await query<{ status: string; count: string }>(
+    `select status, count(*)::text as count from leads where tenant_id = $1 group by status`,
+    [tenantId]
+  );
+  return Object.fromEntries(rows.map((r) => [r.status, Number(r.count)]));
 }
 
 export async function getLeadsForTenant(tenantId: string, status?: LeadStatus): Promise<Lead[]> {

@@ -2,6 +2,7 @@
 import { Router } from "express";
 import * as blogController from "../controllers/blog.controller";
 import { requireAuth } from "../middleware/auth.middleware";
+import { limits } from "../middleware/rateLimit.middleware";
 
 export const blogRoutes = Router();
 
@@ -10,7 +11,7 @@ blogRoutes.get("/public/blog", blogController.publicList);
 blogRoutes.get("/public/blog/:slug", blogController.publicGet);
 
 // Owner-portal routes — require a signed-in session (JWT).
-blogRoutes.post("/blog/generate", requireAuth, blogController.generate);
+blogRoutes.post("/blog/generate", requireAuth, limits.ai, blogController.generate);
 blogRoutes.get("/blog", requireAuth, blogController.list);
 blogRoutes.post("/blog", requireAuth, blogController.create);
 blogRoutes.get("/blog/:id", requireAuth, blogController.getOne);

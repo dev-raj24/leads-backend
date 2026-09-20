@@ -3,8 +3,10 @@
 
 import ExcelJS from "exceljs";
 import { LEAD_SOURCES, type LeadSource } from "../types";
+import { badRequest } from "../utils/errors";
 import { isNonEmptyString } from "../utils/validate";
 
+const MAX_ROWS = 1000;
 const STANDARD_KEYS = ["name", "contact", "message", "source"] as const;
 
 export interface ImportRow {
@@ -56,6 +58,7 @@ export async function parseLeadsWorkbook(buffer: Buffer): Promise<ImportPreview 
   await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
   const sheet = workbook.worksheets[0];
   if (!sheet) return null;
+  if (sheet.rowCount > MAX_ROWS + 1) throw badRequest("too_many_rows");
 
   const headers: string[] = [];
   sheet.getRow(1).eachCell({ includeEmpty: true }, (cell, col) => {

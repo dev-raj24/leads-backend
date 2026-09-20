@@ -6,7 +6,9 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "prestart": "yarn build",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "migrate": "ts-node --transpile-only scripts/migrate.ts",
+    "test": "DATABASE_URL=${TEST_DATABASE_URL:-postgres://localhost:5432/leadworks_test} JWT_SECRET=test-secret NODE_ENV=test BCRYPT_ROUNDS=4 RATE_LIMIT_AUTH=10000 RATE_LIMIT_INGEST=10000 RATE_LIMIT_AI=10000 sh -c 'ts-node --transpile-only scripts/migrate.ts && node --require ts-node/register/transpile-only --test tests/*.test.ts'"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -15,8 +17,11 @@
     "dotenv": "^16.4.5",
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
+    "nodemailer": "^10.0.10",
     "pg": "^8.11.5"
   },
   "devDependencies": {
@@ -26,6 +31,7 @@
     "@types/jsonwebtoken": "^9.0.6",
     "@types/multer": "^1.4.11",
     "@types/node": "^20.12.7",
+    "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.11.4",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.4.5"

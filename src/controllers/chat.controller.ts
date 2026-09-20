@@ -1,10 +1,11 @@
 import type { Request, Response } from "express";
-import * as chatService from "../services/chat.service";
+import * as aiService from "../services/ai.service";
 import { asyncHandler } from "../utils/asyncHandler";
 import { badRequest } from "../utils/errors";
 import { isNonEmptyString } from "../utils/validate";
 
 const MAX_TURNS = 30;
+const MAX_MESSAGE_CHARS = 4000;
 
 /** POST /api/chat — { messages: [{ role, content }] } -> { reply } */
 export const chatWithAgent = asyncHandler(async (req: Request, res: Response) => {
@@ -12,7 +13,7 @@ export const chatWithAgent = asyncHandler(async (req: Request, res: Response) =>
   if (!Array.isArray(messages) || messages.length === 0) throw badRequest("missing_messages");
 
   const turns = messages
-    .filter((m) => isNonEmptyString(m?.content))
+    .filter((m) => isNonEmptyString(m?.content) && m.content.length <= MAX_MESSAGE_CHARS)
     .slice(-MAX_TURNS)
     .map((m) => ({
       role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
@@ -20,5 +21,5 @@ export const chatWithAgent = asyncHandler(async (req: Request, res: Response) =>
     }));
   if (turns.length === 0) throw badRequest("missing_messages");
 
-  res.json({ reply: await chatService.reply(turns) });
+  res.json({ reply: await aiService.chat(req.tenantId!, turns) });
 });

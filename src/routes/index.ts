@@ -1,5 +1,6 @@
 // routes/index.ts — mounts every resource router under /api.
 import { Router } from "express";
+import { aiConfigRoutes } from "./ai-config.routes";
 import { authRoutes } from "./auth.routes";
 import { blogRoutes } from "./blog.routes";
 import { chatRoutes } from "./chat.routes";
@@ -11,6 +12,7 @@ import { siteRoutes } from "./site.routes";
 export const apiRoutes = Router();
 
 apiRoutes.use(authRoutes);
+apiRoutes.use(aiConfigRoutes);
 apiRoutes.use(siteRoutes);
 apiRoutes.use(leadRoutes);
 apiRoutes.use(offerRoutes);
