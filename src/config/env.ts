@@ -1,4 +1,6 @@
-import "dotenv/config";
+import { config as loadDotenv } from "dotenv";
+
+if (process.env.NODE_ENV !== "test") loadDotenv();
 
 const DEV_SECRET = "dev-only-insecure-secret-change-me";
 

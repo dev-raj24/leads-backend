@@ -8,6 +8,7 @@ import { followupRoutes } from "./followup.routes";
 import { leadRoutes } from "./lead.routes";
 import { offerRoutes } from "./offer.routes";
 import { siteRoutes } from "./site.routes";
+import { statsRoutes } from "./stats.routes";
 
 export const apiRoutes = Router();
 
@@ -19,3 +20,4 @@ apiRoutes.use(offerRoutes);
 apiRoutes.use(followupRoutes);
 apiRoutes.use(chatRoutes);
 apiRoutes.use(blogRoutes);
+apiRoutes.use(statsRoutes);
