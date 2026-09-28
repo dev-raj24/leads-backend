@@ -9,6 +9,7 @@ import * as autoReplyService from "../services/autoreply.service";
 import * as leadService from "../services/lead.service";
 import * as messageService from "../services/message.service";
 import * as leadImportService from "../services/lead-import.service";
+import * as mailer from "../services/mailer.service";
 import * as siteService from "../services/site.service";
 import { LEAD_SOURCES, LEAD_STATUSES, type LeadStatus } from "../types";
 import { asyncHandler } from "../utils/asyncHandler";
@@ -19,6 +20,11 @@ const MAX_BULK_ROWS = 1000;
 
 const isLeadStatus = (v: unknown): v is LeadStatus =>
   typeof v === "string" && (LEAD_STATUSES as readonly string[]).includes(v);
+
+// Widget/form embeds identify themselves — anything unrecognized (or missing,
+// e.g. a bare API integration) safely falls back to "form".
+const isIngestSource = (v: unknown): v is (typeof LEAD_SOURCES)[number] =>
+  typeof v === "string" && (LEAD_SOURCES as readonly string[]).includes(v);
 
 /** POST /api/ingest/lead — public, called by the site widget/form with a site key. */
 export const ingest = asyncHandler(async (req: Request, res: Response) => {
@@ -35,6 +41,7 @@ export const ingest = asyncHandler(async (req: Request, res: Response) => {
     contact: limitLength(contact.trim(), 160, "contact_too_long"),
     name: limitLength(optionalString(body.name), 120, "name_too_long"),
     message: limitLength(optionalString(body.message), 2000, "message_too_long"),
+    source: isIngestSource(body.source) ? body.source : undefined,
   });
   alertService.notifyOwnerOfNewLead(tenantId, siteSettings, lead).catch((err) => console.error("[alert]", err));
   followupService.scheduleDefaultFollowup(lead.id).catch((err) => console.error("[followup]", err));
@@ -126,4 +133,26 @@ export const draftReply = asyncHandler(async (req: Request, res: Response) => {
   const lead = await leadService.getLeadById(req.tenantId!, req.params.id);
   if (!lead) throw notFound();
   res.json({ reply: await aiService.draftLeadReply(req.tenantId!, lead) });
+});
+
+/** POST /api/leads/:id/reply — { text } — sends a reply (AI-drafted or hand-written) by email right now. */
+export const sendReply = asyncHandler(async (req: Request, res: Response) => {
+  const lead = await leadService.getLeadById(req.tenantId!, req.params.id);
+  if (!lead) throw notFound();
+
+  const text = req.body?.text;
+  if (!isNonEmptyString(text)) throw badRequest("missing_text");
+  const body = limitLength(text.trim(), 4000, "text_too_long");
+
+  if (!mailer.looksLikeEmail(lead.contact)) throw badRequest("no_email_on_file");
+  if (!mailer.isMailConfigured()) throw badRequest("mail_not_configured");
+
+  const sent = await mailer.sendMail({ to: lead.contact, subject: "Re: your enquiry", text: body });
+  if (!sent) throw badRequest("send_failed");
+
+  await messageService.addMessage(lead.id, { channel: "email", direction: "outbound", body, aiGenerated: false });
+  await leadService.recordEvent(lead.id, "manual_reply_sent", { channel: "email" });
+  if (lead.status === "new") await leadService.updateLeadStatus(req.tenantId!, lead.id, "replied");
+
+  res.json({ lead: await leadService.getLeadById(req.tenantId!, lead.id) });
 });

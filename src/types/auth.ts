@@ -2,6 +2,8 @@ export interface Tenant {
   id: string;
   name: string;
   plan: string;
+  industry: string | null;
+  onboardingCompleted: boolean;
   createdAt: string;
 }
 
@@ -23,3 +25,6 @@ export interface SignupInput {
   password: string;
   servicesInfo?: string;
 }
+
+export const PLANS = ["free", "pro"] as const;
+export type Plan = (typeof PLANS)[number];

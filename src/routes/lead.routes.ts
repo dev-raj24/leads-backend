@@ -22,4 +22,5 @@ leadRoutes.post("/leads/upload-preview", requireAuth, upload.single("file") as a
 leadRoutes.post("/leads/bulk", requireAuth, leadController.bulkIngest);
 leadRoutes.get("/leads/:id", requireAuth, leadController.getOne);
 leadRoutes.post("/leads/:id/ai-reply", requireAuth, limits.ai, leadController.draftReply);
+leadRoutes.post("/leads/:id/reply", requireAuth, leadController.sendReply);
 leadRoutes.patch("/leads/:id", requireAuth, leadController.updateStatus);

@@ -15,6 +15,7 @@ export class AppError extends Error {
 
 export const badRequest = (code: string, message?: string) => new AppError(400, code, message);
 export const notFound = (code = "not_found") => new AppError(404, code);
+export const forbidden = (code: string, message?: string) => new AppError(403, code, message);
 
 // ---- domain errors -------------------------------------------------------
 
@@ -43,5 +44,12 @@ export class DatabaseNotConfiguredError extends AppError {
   constructor() {
     super(503, "database_not_configured", "DATABASE_URL is not set. Add it to .env to connect a Postgres database.");
     this.name = "DatabaseNotConfiguredError";
+  }
+}
+
+export class InvalidResetTokenError extends AppError {
+  constructor() {
+    super(400, "invalid_or_expired_token", "This reset link is invalid or has expired.");
+    this.name = "InvalidResetTokenError";
   }
 }

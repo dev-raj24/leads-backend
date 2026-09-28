@@ -24,4 +24,5 @@ export interface IngestLeadInput {
   name?: string;
   contact: string;
   message?: string;
+  source?: LeadSource;
 }

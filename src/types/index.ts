@@ -4,6 +4,7 @@ import "./express";
 export * from "./ai";
 export * from "./auth";
 export * from "./blog";
+export * from "./customer";
 export * from "./followup";
 export * from "./lead";
 export * from "./offer";

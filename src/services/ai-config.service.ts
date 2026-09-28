@@ -1,22 +1,38 @@
 import { query } from "../config/db";
-import type { BusinessProfile } from "../types";
+import type { BusinessProfile, ServiceItem } from "../types";
 
-const FIELD_LIMITS: Record<keyof BusinessProfile, number> = {
+type TextField = "about" | "timings" | "tone" | "faqs";
+
+const TEXT_FIELD_LIMITS: Record<TextField, number> = {
   about: 3000,
-  services: 3000,
   timings: 500,
   tone: 200,
   faqs: 4000,
 };
 
-export const PROFILE_FIELDS = Object.keys(FIELD_LIMITS) as Array<keyof BusinessProfile>;
-export const profileFieldLimit = (field: keyof BusinessProfile) => FIELD_LIMITS[field];
+export const TEXT_FIELDS = Object.keys(TEXT_FIELD_LIMITS) as TextField[];
+export const textFieldLimit = (field: TextField) => TEXT_FIELD_LIMITS[field];
 
-const EMPTY: BusinessProfile = { about: "", services: "", timings: "", tone: "", faqs: "" };
+export const SERVICE_LIMITS = { name: 100, description: 300, price: 50, maxItems: 30 };
+
+const EMPTY: BusinessProfile = { about: "", services: [], timings: "", tone: "", faqs: "" };
 
 interface ProfileRow {
-  business_info: Partial<Record<keyof BusinessProfile, unknown>> | null;
+  business_info: (Partial<Record<TextField, unknown>> & { services?: unknown }) | null;
   business_name: string;
+}
+
+function readServices(raw: unknown): ServiceItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+    .map((item) => ({
+      name: typeof item.name === "string" ? item.name : "",
+      description: typeof item.description === "string" ? item.description : "",
+      price: typeof item.price === "string" ? item.price : "",
+      hidePrice: item.hidePrice === true,
+    }))
+    .filter((s) => s.name.trim().length > 0);
 }
 
 export async function getBusinessProfile(tenantId: string): Promise<{ businessName: string; profile: BusinessProfile }> {
@@ -30,9 +46,10 @@ export async function getBusinessProfile(tenantId: string): Promise<{ businessNa
   const row = rows[0];
   const info = row?.business_info ?? {};
   const profile = { ...EMPTY };
-  for (const field of PROFILE_FIELDS) {
+  for (const field of TEXT_FIELDS) {
     if (typeof info[field] === "string") profile[field] = info[field] as string;
   }
+  profile.services = readServices(info.services);
   return { businessName: row?.business_name ?? "", profile };
 }
 

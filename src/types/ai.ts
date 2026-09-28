@@ -1,6 +1,13 @@
+export interface ServiceItem {
+  name: string;
+  description: string;
+  price: string;
+  hidePrice: boolean;
+}
+
 export interface BusinessProfile {
   about: string;
-  services: string;
+  services: ServiceItem[];
   timings: string;
   tone: string;
   faqs: string;

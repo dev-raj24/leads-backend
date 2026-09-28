@@ -58,19 +58,23 @@ export async function createFromSite(input: IngestLeadInput): Promise<IngestResu
   const site = sites[0];
   if (!site) throw new InvalidSiteKeyError();
 
+  const source = input.source ?? "form";
   const rows = await query<LeadRow>(
     `insert into leads (tenant_id, site_id, name, contact, message, source, status)
-     values ($1, $2, $3, $4, $5, 'form', 'new')
+     values ($1, $2, $3, $4, $5, $6, 'new')
      returning *`,
-    [site.tenant_id, site.id, input.name ?? null, input.contact, input.message ?? null]
+    [site.tenant_id, site.id, input.name ?? null, input.contact, input.message ?? null, source]
   );
   const lead = toLead(rows[0]);
 
-  await recordEvent(lead.id, "created", { source: "form", siteId: site.id });
+  await recordEvent(lead.id, "created", { source, siteId: site.id });
   if (lead.message) {
+    // messages.channel is about how the message was carried (chat/email/whatsapp/form),
+    // not where the lead came from — map the lead source to that narrower vocabulary.
+    const channel = source === "chat_widget" ? "chat" : source === "whatsapp" ? "whatsapp" : "form";
     await query(
-      `insert into messages (lead_id, channel, direction, body) values ($1, 'form', 'inbound', $2)`,
-      [lead.id, lead.message]
+      `insert into messages (lead_id, channel, direction, body) values ($1, $2, 'inbound', $3)`,
+      [lead.id, channel, lead.message]
     );
   }
 
@@ -107,6 +111,14 @@ export async function getLeadsForTenant(tenantId: string, status?: LeadStatus): 
         `select * from leads where tenant_id = $1 order by created_at desc`,
         [tenantId]
       );
+  return rows.map(toLead);
+}
+
+export async function getLeadsForContact(tenantId: string, contact: string): Promise<Lead[]> {
+  const rows = await query<LeadRow>(
+    `select * from leads where tenant_id = $1 and lower(contact) = lower($2) order by created_at desc`,
+    [tenantId, contact]
+  );
   return rows.map(toLead);
 }
 

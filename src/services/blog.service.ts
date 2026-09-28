@@ -2,7 +2,7 @@
 // Rule: raw SQL lives ONLY here. Every query is parametrized and every
 // owner-facing query is scoped by tenant_id.
 
-import { completeText } from "../config/anthropic";
+import { completeText } from "../config/gemini";
 import { getBusinessProfile } from "./ai-config.service";
 import { query } from "../config/db";
 import { AppError } from "../utils/errors";
@@ -51,15 +51,16 @@ function slugify(title: string): string {
   return base || "post";
 }
 
-/** AI-drafts a full post from a topic. Requires ANTHROPIC_API_KEY. */
+/** AI-drafts a full post from a topic. Requires GEMINI_API_KEY. */
 export async function generateDraft(tenantId: string, topic: string): Promise<BlogDraft> {
   const { businessName, profile } = await getBusinessProfile(tenantId);
+  const serviceNames = profile.services.map((s) => s.name).join(", ");
   const text = await completeText({
-    maxTokens: 2048,
+    maxTokens: 3000,
     system:
       `You write blog posts for small local businesses (dental clinics, salons, real ` +
       `estate agents, coaches) using a product called Leadworks. You are writing for ` +
-      `${businessName}${profile.about ? ` (${profile.about})` : ""}${profile.services ? `; services: ${profile.services}` : ""}. Write a complete, ` +
+      `${businessName}${profile.about ? ` (${profile.about})` : ""}${serviceNames ? `; services: ${serviceNames}` : ""}. Write a complete, ` +
       `ready-to-publish post for the given topic — warm, helpful, locally relevant, no ` +
       `fluff. Respond with ONLY a JSON object, no markdown fences, no commentary, shaped ` +
       `exactly like: {"title": "...", "excerpt": "one or two sentence summary", ` +

@@ -36,8 +36,8 @@ export const env = {
   mailFrom: process.env.MAIL_FROM ?? "Leadworks <no-reply@leadworks.local>",
   appUrl: process.env.APP_URL ?? "http://localhost:3000",
   jobsEnabled: process.env.JOBS !== "off" && nodeEnv !== "test",
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
-  anthropicModel: process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001",
+  geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+  geminiModel: process.env.GEMINI_MODEL ?? "gemini-3.8-flash",
   rateLimits: {
     authMax: num(process.env.RATE_LIMIT_AUTH, 10),
     ingestMax: num(process.env.RATE_LIMIT_INGEST, 20),

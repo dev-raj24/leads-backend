@@ -43,7 +43,7 @@ export async function getFollowupsForTenant(tenantId: string): Promise<Followup[
   return rows.map(toFollowup);
 }
 
-async function getOne(tenantId: string, id: string): Promise<Followup> {
+export async function getFollowupById(tenantId: string, id: string): Promise<Followup> {
   const rows = await query<FollowupRow>(`${SELECT} where f.id = $2 and l.tenant_id = $1`, [tenantId, id]);
   if (!rows[0]) throw notFound();
   return toFollowup(rows[0]);
@@ -66,7 +66,7 @@ export async function createFollowup(tenantId: string, leadId: string, runAt: Da
     `insert into followups (lead_id, run_at, status, template) values ($1, $2, 'pending', $3) returning id`,
     [leadId, runAt.toISOString(), template ?? null]
   );
-  return getOne(tenantId, rows[0].id);
+  return getFollowupById(tenantId, rows[0].id);
 }
 
 async function transition(
@@ -84,7 +84,7 @@ async function transition(
     [tenantId, id, from, ...extra]
   );
   if (!rows[0]) throw notFound();
-  return getOne(tenantId, id);
+  return getFollowupById(tenantId, id);
 }
 
 export const approveFollowup = (tenantId: string, id: string, template?: string) =>
@@ -93,8 +93,8 @@ export const approveFollowup = (tenantId: string, id: string, template?: string)
 export const cancelFollowup = (tenantId: string, id: string) =>
   transition(tenantId, id, ["pending", "approved", "manual"], `status = 'cancelled'`);
 
-export const markFollowupSent = (tenantId: string, id: string) =>
-  transition(tenantId, id, ["manual"], `status = 'sent', sent_at = now()`);
+export const markFollowupSent = (tenantId: string, id: string, template?: string) =>
+  transition(tenantId, id, ["manual"], `status = 'sent', sent_at = now(), template = coalesce($4, f.template)`, [template ?? null]);
 
 export async function claimDueFollowups(limit: number): Promise<DueFollowup[]> {
   const rows = await query<{ id: string; lead_id: string; template: string | null }>(
@@ -102,12 +102,13 @@ export async function claimDueFollowups(limit: number): Promise<DueFollowup[]> {
      where f.id in (
        select f2.id from followups f2
        join leads l on l.id = f2.lead_id
+       join tenants t on t.id = l.tenant_id
        left join lateral (
          select s.settings from sites s where s.tenant_id = l.tenant_id order by s.created_at asc limit 1
        ) st on true
        where f2.run_at <= now()
          and (f2.status = 'approved'
-              or (f2.status = 'pending' and coalesce(st.settings ->> 'autofollow', 'false') = 'true'))
+              or (f2.status = 'pending' and t.plan = 'pro' and coalesce(st.settings ->> 'autofollow', 'false') = 'true'))
        order by f2.run_at asc
        limit $1
        for update of f2 skip locked

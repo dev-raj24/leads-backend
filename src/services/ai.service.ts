@@ -1,15 +1,28 @@
-import { completeText, type ChatTurn } from "../config/anthropic";
+import { completeText, type ChatTurn } from "../config/gemini";
 import * as aiConfigService from "./ai-config.service";
 import * as leadService from "./lead.service";
 import type { BusinessProfile, Lead } from "../types";
 
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
+function describeServices(services: BusinessProfile["services"]): string | false {
+  if (services.length === 0) return false;
+  const lines = services.map((s) => {
+    const price = s.hidePrice
+      ? "price varies — never state a number for this one, tell the customer to contact us for a quote"
+      : s.price
+        ? `₹${s.price}`
+        : "price not given — do not guess one";
+    return `- ${s.name}${s.description ? ` (${s.description})` : ""}: ${price}`;
+  });
+  return `Services:\n${lines.join("\n")}`;
+}
+
 function describeBusiness(businessName: string, profile: BusinessProfile): string {
   const lines = [
     `Business name: ${businessName}`,
     profile.about && `About: ${profile.about}`,
-    profile.services && `Services and prices: ${profile.services}`,
+    describeServices(profile.services),
     profile.timings && `Opening hours: ${profile.timings}`,
     profile.faqs && `FAQs:\n${profile.faqs}`,
   ].filter(Boolean);
@@ -40,7 +53,7 @@ export async function chat(tenantId: string, messages: ChatTurn[]): Promise<stri
     leadLines.join("\n") || "(no leads yet)",
   ].join("\n");
 
-  const text = await completeText({ system, messages, maxTokens: 700 });
+  const text = await completeText({ system, messages, maxTokens: 1300 });
   return text || "Sorry, I couldn't process that.";
 }
 
@@ -61,7 +74,7 @@ export async function draftLeadReply(tenantId: string, lead: Pick<Lead, "name" |
     .join("\n");
 
   const content = `Customer name: ${lead.name ?? "unknown"}\nChannel: ${lead.source}\nEnquiry: ${clip(lead.message ?? "(no message, only contact details left)", 1500)}`;
-  const text = await completeText({ system, messages: [{ role: "user", content }], maxTokens: 300 });
+  const text = await completeText({ system, messages: [{ role: "user", content }], maxTokens: 1000 });
   return text.trim();
 }
 
@@ -81,5 +94,5 @@ export async function draftFollowup(tenantId: string, lead: Pick<Lead, "name" | 
     .join("\n");
 
   const content = `Customer name: ${lead.name ?? "unknown"}\nTheir original enquiry: ${clip(lead.message ?? "(none)", 800)}`;
-  return (await completeText({ system, messages: [{ role: "user", content }], maxTokens: 200 })).trim();
+  return (await completeText({ system, messages: [{ role: "user", content }], maxTokens: 900 })).trim();
 }

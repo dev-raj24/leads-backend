@@ -93,6 +93,7 @@ describe("input limits", () => {
 
   it("caps bulk imports, blog posts and site settings", async () => {
     const { token, siteId } = await api.signup("caps");
+    await api.call("PATCH", "/api/tenant/plan", { token, body: { plan: "pro" } });
 
     const rows = Array.from({ length: 1001 }, (_, i) => ({ contact: `c${i}` }));
     const bulk = await api.call("POST", "/api/leads/bulk", { token, body: { leads: rows } });

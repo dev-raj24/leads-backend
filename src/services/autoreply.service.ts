@@ -12,7 +12,7 @@ const withTimeout = <T>(promise: Promise<T>, ms: number) =>
   Promise.race([promise, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
 
 export async function replyToNewLead(tenantId: string, settings: Record<string, unknown>, lead: Lead): Promise<string | null> {
-  if (!env.anthropicApiKey || settings.autoreply === false) return null;
+  if (!env.geminiApiKey || settings.autoreply === false) return null;
 
   try {
     const since = new Date(Date.now() - 60 * 60 * 1000);

@@ -2,6 +2,7 @@
 
 import type { Request, Response } from "express";
 import * as siteService from "../services/site.service";
+import { getTenant } from "../services/tenant.service";
 import { asyncHandler } from "../utils/asyncHandler";
 import { badRequest, notFound } from "../utils/errors";
 import { limitJsonSize } from "../utils/validate";
@@ -20,6 +21,13 @@ export const updateSettings = asyncHandler(async (req: Request, res: Response) =
     throw badRequest("missing_settings");
   }
   limitJsonSize(settings, 16_000, "settings_too_large");
+
+  // Automated (unapproved) follow-up sending is a Pro feature — clamp it off for everyone else.
+  if (settings.autofollow === true) {
+    const tenant = await getTenant(req.tenantId!);
+    if (tenant.plan !== "pro") settings.autofollow = false;
+  }
+
   const site = await siteService.updateSiteSettings(req.tenantId!, req.params.id, settings);
   if (!site) throw notFound();
   res.json({ site });

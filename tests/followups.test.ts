@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { after, afterEach, before, describe, it, mock } from "node:test";
-import * as anthropic from "../src/config/anthropic";
+import * as gemini from "../src/config/gemini";
 import { env } from "../src/config/env";
 import { runDueFollowups } from "../src/services/followup-runner.service";
 import * as mailer from "../src/services/mailer.service";
@@ -18,7 +18,7 @@ const stubMail = () => {
 };
 
 const stubAi = (reply: string | Error) =>
-  mock.method(anthropic, "completeText", async () => {
+  mock.method(gemini, "completeText", async () => {
     if (reply instanceof Error) throw reply;
     return reply;
   });
@@ -33,7 +33,7 @@ async function newLead(siteKey: string, token: string, contact: string) {
 }
 
 before(async () => {
-  env.anthropicApiKey = "test-key";
+  env.geminiApiKey = "test-key";
   api = await startApi();
 });
 
@@ -126,6 +126,7 @@ describe("follow-ups", () => {
     stubMail();
     stubAi("Hi Riya, just checking in!");
     const { token, siteKey, siteId } = await api.signup("fu_auto");
+    await api.call("PATCH", "/api/tenant/plan", { token, body: { plan: "pro" } });
     await api.call("PATCH", `/api/sites/${siteId}/settings`, { token, body: { settings: { autofollow: true } } });
     const leadId = await newLead(siteKey, token, "riya@x.co");
     sent = [];
@@ -134,6 +135,24 @@ describe("follow-ups", () => {
     await runDueFollowups();
     const nudge = sent.find((m) => m.subject === "Following up on your enquiry");
     assert.equal(nudge?.text, "Hi Riya, just checking in!");
+  });
+
+  it("keeps auto follow-up off on the free plan even if the setting is forced on", async () => {
+    stubMail();
+    stubAi("Hi Riya, just checking in!");
+    const { token, siteKey, siteId } = await api.signup("fu_auto_free");
+
+    const saved = await api.call("PATCH", `/api/sites/${siteId}/settings`, { token, body: { settings: { autofollow: true } } });
+    assert.equal(saved.body.site.settings.autofollow, false);
+
+    const leadId = await newLead(siteKey, token, "riya@x.co");
+    sent = [];
+    await api.call("POST", `/api/leads/${leadId}/followups`, { token, body: { runAt: past() } });
+    await runDueFollowups();
+    assert.equal(sent.length, 0);
+
+    const list = await api.call("GET", "/api/followups", { token });
+    assert.equal(list.body.followups[0].status, "pending");
   });
 
   it("falls back to a generic message when the AI is down, and hands phone leads over for manual sending", async () => {
@@ -190,5 +209,75 @@ describe("follow-ups", () => {
     const cancelled = await api.call("POST", `/api/followups/${id}/cancel`, { token: a.token });
     assert.equal(cancelled.body.followup.status, "cancelled");
     assert.equal((await api.call("POST", `/api/followups/${id}/cancel`, { token: a.token })).status, 404);
+  });
+
+  it("drafts a follow-up message on demand, and isolates tenants", async () => {
+    stubAi("Hi Riya, just checking in on braces!");
+    const a = await api.signup("fu_draft_a");
+    const b = await api.signup("fu_draft_b");
+    await newLead(a.siteKey, a.token, "riya@x.co");
+    const list = await api.call("GET", "/api/followups", { token: a.token });
+    const id = list.body.followups[0].id;
+
+    const drafted = await api.call("POST", `/api/followups/${id}/draft`, { token: a.token });
+    assert.equal(drafted.status, 200);
+    assert.equal(drafted.body.draft, "Hi Riya, just checking in on braces!");
+
+    assert.equal((await api.call("POST", `/api/followups/${id}/draft`, { token: b.token })).status, 404);
+  });
+
+  it("sends a manual follow-up by email, records the message, and validates it can only run once", async () => {
+    stubAi(new Error("down"));
+    const { token, siteKey } = await api.signup("fu_email");
+    const leadId = await newLead(siteKey, token, "riya@x.co");
+    const created = await api.call("POST", `/api/leads/${leadId}/followups`, { token, body: { runAt: past() } });
+    const id = created.body.followup.id;
+    await api.call("POST", `/api/followups/${id}/approve`, { token });
+    await runDueFollowups(); // no SMTP configured in tests -> falls back to manual
+    const status = (await api.call("GET", "/api/followups", { token })).body.followups.find((f: any) => f.id === id).status;
+    assert.equal(status, "manual");
+
+    stubMail();
+    const result = await api.call("POST", `/api/followups/${id}/send-email`, { token });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.followup.status, "sent");
+
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].to, "riya@x.co");
+
+    const detail = await api.call("GET", `/api/leads/${leadId}`, { token });
+    assert.ok(detail.body.messages.some((m: any) => m.direction === "outbound" && m.channel === "email"));
+
+    const again = await api.call("POST", `/api/followups/${id}/send-email`, { token });
+    assert.equal(again.status, 400);
+    assert.equal(again.body.error, "not_manual");
+  });
+
+  it("rejects sending by email when there's no email on file or mail isn't configured", async () => {
+    stubMail();
+    stubAi(new Error("down"));
+    const { token, siteKey } = await api.signup("fu_email_bad");
+    const leadId = await newLead(siteKey, token, "+919800000009");
+    const created = await api.call("POST", `/api/leads/${leadId}/followups`, { token, body: { runAt: past() } });
+    const id = created.body.followup.id;
+    await api.call("POST", `/api/followups/${id}/approve`, { token });
+    await runDueFollowups();
+
+    const noEmail = await api.call("POST", `/api/followups/${id}/send-email`, { token });
+    assert.equal(noEmail.body.error, "no_email_on_file");
+  });
+
+  it("saves an edited message when marking a manual follow-up as sent", async () => {
+    stubAi(new Error("down"));
+    const { token, siteKey } = await api.signup("fu_marksent_template");
+    const leadId = await newLead(siteKey, token, "riya@x.co");
+    const created = await api.call("POST", `/api/leads/${leadId}/followups`, { token, body: { runAt: past() } });
+    const id = created.body.followup.id;
+    await api.call("POST", `/api/followups/${id}/approve`, { token });
+    await runDueFollowups();
+
+    const marked = await api.call("POST", `/api/followups/${id}/mark-sent`, { token, body: { template: "Called and left a voicemail." } });
+    assert.equal(marked.body.followup.status, "sent");
+    assert.equal(marked.body.followup.template, "Called and left a voicemail.");
   });
 });

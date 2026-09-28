@@ -70,6 +70,20 @@ describe("leads", () => {
     assert.equal(filtered.body.leads.length, 0);
   });
 
+  it("records the ingest source, defaulting to form for anything unrecognized", async () => {
+    const { token, siteKey } = await api.signup("leads_source");
+
+    await api.call("POST", "/api/ingest/lead", { body: { site_key: siteKey, contact: "a@x.co", message: "hi", source: "chat_widget" } });
+    await api.call("POST", "/api/ingest/lead", { body: { site_key: siteKey, contact: "b@x.co", message: "hi" } });
+    await api.call("POST", "/api/ingest/lead", { body: { site_key: siteKey, contact: "c@x.co", message: "hi", source: "not_a_real_source" } });
+
+    const leads = await api.call("GET", "/api/leads", { token });
+    const bySource = Object.fromEntries(leads.body.leads.map((l: any) => [l.contact, l.source]));
+    assert.equal(bySource["a@x.co"], "chat_widget");
+    assert.equal(bySource["b@x.co"], "form");
+    assert.equal(bySource["c@x.co"], "form");
+  });
+
   it("rejects ingest with an unknown key or no contact", async () => {
     const unknown = await api.call("POST", "/api/ingest/lead", { body: { site_key: "nope", contact: "1" } });
     assert.equal(unknown.status, 401);
@@ -106,6 +120,7 @@ describe("leads", () => {
 describe("offers and widget config", () => {
   it("creates, updates, exposes to the widget and deletes", async () => {
     const { token, siteKey } = await api.signup("offers");
+    await api.call("PATCH", "/api/tenant/plan", { token, body: { plan: "pro" } });
 
     const empty = await api.call("GET", `/api/public/widget-config?siteKey=${siteKey}`);
     assert.equal(empty.body.offer, null);
@@ -133,10 +148,27 @@ describe("offers and widget config", () => {
 
   it("requires a title and a site key", async () => {
     const { token } = await api.signup("offers_val");
+    await api.call("PATCH", "/api/tenant/plan", { token, body: { plan: "pro" } });
     const noTitle = await api.call("POST", "/api/offers", { token, body: { body: "x" } });
     assert.equal(noTitle.body.error, "missing_title");
     const noKey = await api.call("GET", "/api/public/widget-config");
     assert.equal(noKey.body.error, "missing_site_key");
+  });
+
+  it("blocks creating a new offer on the free plan but allows managing existing ones", async () => {
+    const { token } = await api.signup("offers_free");
+    const blocked = await api.call("POST", "/api/offers", { token, body: { title: "20% off" } });
+    assert.equal(blocked.status, 403);
+    assert.equal(blocked.body.error, "pro_required");
+
+    await api.call("PATCH", "/api/tenant/plan", { token, body: { plan: "pro" } });
+    const created = await api.call("POST", "/api/offers", { token, body: { title: "20% off" } });
+    const id = created.body.offer.id;
+
+    // Downgrade back to free — the offer they already made stays editable.
+    await api.call("PATCH", "/api/tenant/plan", { token, body: { plan: "free" } });
+    const updated = await api.call("PATCH", `/api/offers/${id}`, { token, body: { active: false } });
+    assert.equal(updated.status, 200);
   });
 });
 

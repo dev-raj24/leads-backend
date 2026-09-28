@@ -33,4 +33,4 @@ Express + TypeScript + PostgreSQL.
 ## Environment
 
 Required: `DATABASE_URL`, `JWT_SECRET` (32+ characters in production).
-Optional: `ANTHROPIC_API_KEY` enables AI replies, chat and blog drafts. `SMTP_URL` enables alert and follow-up emails.
+Optional: `GEMINI_API_KEY` enables AI replies, chat and blog drafts. `SMTP_URL` enables alert and follow-up emails.
