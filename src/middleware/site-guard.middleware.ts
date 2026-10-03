@@ -3,16 +3,20 @@ import { env } from "../config/env";
 import * as siteService from "../services/site.service";
 import { normalizeHost } from "../services/site.service";
 
-const dashboardHosts = new Set(env.corsOrigins.map(normalizeHost));
-
-function requestHost(req: Request): string | null {
-  const source = req.get("origin") ?? req.get("referer");
-  if (!source) return null;
+const originHost = (value: string): string | null => {
   try {
-    return normalizeHost(new URL(source).host);
+    return new URL(value).host.toLowerCase();
   } catch {
     return null;
   }
+};
+
+const dashboardHosts = new Set(env.corsOrigins.flatMap((o) => originHost(o) ?? []));
+
+function requestSource(req: Request): { host: string; raw: string } | null {
+  const source = req.get("origin") ?? req.get("referer");
+  const raw = source ? originHost(source) : null;
+  return raw ? { host: normalizeHost(raw), raw } : null;
 }
 
 const KINDS: Array<[string, string]> = [
@@ -28,8 +32,9 @@ const kindOf = (path: string) => KINDS.find(([p]) => path.includes(p))?.[1] ?? "
 export async function siteGuard(req: Request, res: Response, next: NextFunction) {
   try {
     const key = req.query.siteKey ?? req.body?.siteKey ?? req.body?.site_key;
-    const host = requestHost(req);
-    if (typeof key !== "string" || !key || !host || dashboardHosts.has(host)) return next();
+    const source = requestSource(req);
+    if (typeof key !== "string" || !key || !source || dashboardHosts.has(source.raw)) return next();
+    const host = source.host;
 
     const site = await siteService.getSiteByApiKey(key);
     if (!site) return next();

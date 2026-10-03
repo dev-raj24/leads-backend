@@ -17,7 +17,10 @@ export async function ownerEmails(tenantId: string): Promise<string[]> {
 async function deliver(tenantId: string, leadId: string, subject: string, text: string, kind: string): Promise<boolean> {
   if (!mailer.isMailConfigured()) return false;
   const recipients = await ownerEmails(tenantId);
-  if (recipients.length === 0) return false;
+  if (recipients.length === 0) {
+    await leadService.recordEvent(leadId, "owner_alert_skipped", { kind, reason: "email_not_verified" });
+    return false;
+  }
   const results = await Promise.all(recipients.map((to) => mailer.sendMail({ to, subject, text })));
   const sent = results.some(Boolean);
   await leadService.recordEvent(leadId, sent ? "owner_alerted" : "owner_alert_failed", { kind, recipients: recipients.length });
