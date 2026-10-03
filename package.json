@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
+    "worker": "ts-node-dev --respawn --transpile-only src/worker.ts",
+    "start:worker": "node dist/worker.js",
     "prestart": "yarn build",
     "start": "node dist/server.js",
     "migrate": "ts-node --transpile-only scripts/migrate.ts",
