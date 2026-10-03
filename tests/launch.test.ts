@@ -232,6 +232,7 @@ describe("email verification", () => {
     stubMail();
     stubAi("Hi.");
     const { token, siteKey, email } = await api.signup("verify", { verified: false });
+    await settle();
     const verifyMail = sent.find((m) => m.to === email && /Confirm your email/.test(m.subject));
     assert.ok(verifyMail);
 

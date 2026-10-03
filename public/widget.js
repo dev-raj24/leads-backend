@@ -288,6 +288,24 @@
     return;
   }
 
+  var activeOffer = null;
+  var configReady = false;
+
+  function scan() {
+    if (configReady) mountInline(activeOffer);
+    mountBlog();
+  }
+
+  // Sites built with React, Wix or Webflow add our placeholders after the page has loaded.
+  function watchDom() {
+    if (!window.MutationObserver) return;
+    var timer;
+    new MutationObserver(function () {
+      clearTimeout(timer);
+      timer = setTimeout(scan, 150);
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  }
+
   api("/api/public/widget-config?siteKey=" + encodeURIComponent(SITE_KEY))
     .then(function (data) {
       var chatOn = data.chat && data.chat.enabled;
@@ -296,18 +314,20 @@
           ? "left"
           : "right"
         : null;
+      activeOffer = data.offer || null;
       if (data.offer) showOffer(data.offer, chatSide);
       if (chatOn) renderChat(data.chat.design || {}, false);
-      whenReady(function () {
-        mountInline(data.offer);
-      });
+      configReady = true;
+      whenReady(scan);
     })
     .catch(function (err) {
       console.error("[leadworks] widget-config failed:", err.message);
     });
 
-  // Blog is independent of the offer/chat config, so it still renders if that call fails.
-  whenReady(mountBlog);
+  whenReady(function () {
+    mountBlog();
+    watchDom();
+  });
 
   function whenReady(fn) {
     if (document.readyState === "loading")
@@ -707,11 +727,7 @@
       }
 
       if (!saved.leadId)
-        add(
-          design.greeting ||
-            "Hi! What's your name and phone or email so we can help?",
-          "ai",
-        );
+        add(design.greeting || "Hi! How can we help you today?", "ai");
 
       var sending = false;
       function unlock() {
@@ -730,26 +746,9 @@
         send.disabled = true;
 
         if (!saved.leadId) {
-          var parts = text.split(",").map(function (s) {
-            return s.trim();
-          });
-          var contact = parts.length > 1 ? parts[1] : parts[0];
-          var name = parts.length > 1 ? parts[0] : undefined;
           add(text, "me");
-
-          if (!contact || !validContact(contact)) {
-            add(
-              'Please share a phone number or email so we can reach you — e.g. "Priya, priya@email.com"',
-              "ai",
-            );
-            unlock();
-            return;
-          }
-
           post("/api/public/chat/start", {
             siteKey: SITE_KEY,
-            name: name,
-            contact: contact,
             message: text,
           })
             .then(function (res) {

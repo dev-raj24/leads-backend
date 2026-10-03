@@ -60,8 +60,11 @@ export const list = asyncHandler(async (req: Request, res: Response) => {
 export const getOne = asyncHandler(async (req: Request, res: Response) => {
   const lead = await leadService.getLeadById(req.tenantId!, req.params.id);
   if (!lead) throw notFound();
-  const messages = await messageService.getMessagesForLead(req.tenantId!, lead.id);
-  res.json({ lead, messages });
+  const [messages, events] = await Promise.all([
+    messageService.getMessagesForLead(req.tenantId!, lead.id),
+    leadService.getEventsForLead(req.tenantId!, lead.id),
+  ]);
+  res.json({ lead, messages, events });
 });
 
 /** PATCH /api/leads/:id — { status } */

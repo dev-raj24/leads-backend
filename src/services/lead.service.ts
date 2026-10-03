@@ -128,6 +128,24 @@ export async function recordEvent(leadId: string, type: string, payload: Record<
   await query(`insert into lead_events (lead_id, type, payload) values ($1, $2, $3::jsonb)`, [leadId, type, JSON.stringify(payload)]);
 }
 
+export interface LeadEvent {
+  id: string;
+  type: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+export async function getEventsForLead(tenantId: string, leadId: string): Promise<LeadEvent[]> {
+  const rows = await query<{ id: string; type: string; payload: Record<string, unknown>; created_at: string }>(
+    `select e.id, e.type, e.payload, e.created_at from lead_events e
+     join leads l on l.id = e.lead_id
+     where e.lead_id = $2 and l.tenant_id = $1
+     order by e.created_at asc`,
+    [tenantId, leadId]
+  );
+  return rows.map((r) => ({ id: r.id, type: r.type, payload: r.payload ?? {}, createdAt: r.created_at }));
+}
+
 export async function getRecentLeads(tenantId: string, limit: number): Promise<Lead[]> {
   const rows = await query<LeadRow>(
     `select * from leads where tenant_id = $1 and qualified = true order by created_at desc limit $2`,

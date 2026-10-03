@@ -14,10 +14,12 @@ export interface ChatDesign {
   customCss: string;
 }
 
+const OLD_DEFAULT_GREETING = "Hi! What's your name and phone or email so we can help?";
+
 export const DEFAULT_CHAT_DESIGN: ChatDesign = {
   title: "Chat with us",
   subtitle: "We usually reply in a few minutes",
-  greeting: "Hi! What's your name and phone or email so we can help?",
+  greeting: "Hi! How can we help you today?",
   color: "auto",
   position: "right",
   launcher: "icon",
@@ -39,7 +41,7 @@ export function readChatDesign(raw: unknown): ChatDesign {
   return {
     title: text(r.title, DEFAULT_CHAT_DESIGN.title, 40),
     subtitle: text(r.subtitle, DEFAULT_CHAT_DESIGN.subtitle, 80),
-    greeting: text(r.greeting, DEFAULT_CHAT_DESIGN.greeting, 300),
+    greeting: r.greeting === OLD_DEFAULT_GREETING ? DEFAULT_CHAT_DESIGN.greeting : text(r.greeting, DEFAULT_CHAT_DESIGN.greeting, 300),
     color: r.color === "auto" || (typeof r.color === "string" && HEX.test(r.color)) ? (r.color as string) : DEFAULT_CHAT_DESIGN.color,
     position: r.position === "left" ? "left" : "right",
     launcher: r.launcher === "label" ? "label" : "icon",

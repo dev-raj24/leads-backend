@@ -68,7 +68,7 @@ export async function signup(
 
     await client.query("commit");
 
-    await sendVerification(userRows.rows[0].id, input.email).catch((err) => console.error("[verify]", err));
+    sendVerification(userRows.rows[0].id, input.email).catch((err) => console.error("[verify]", err));
 
     return {
       user: toAuthUser(userRows.rows[0]),
