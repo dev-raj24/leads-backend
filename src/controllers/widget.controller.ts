@@ -3,11 +3,19 @@
 
 import type { Request, Response } from "express";
 import type { ChatTurn } from "../config/gemini";
+import { randomBytes } from "crypto";
+import * as aiConfigService from "../services/ai-config.service";
 import * as aiService from "../services/ai.service";
+import * as alertService from "../services/alert.service";
+import * as leadIntake from "../services/lead-intake.service";
 import * as leadService from "../services/lead.service";
 import * as messageService from "../services/message.service";
 import * as siteService from "../services/site.service";
 import { getTenant } from "../services/tenant.service";
+import * as usageService from "../services/usage.service";
+import { planDef } from "../config/plans";
+import { query } from "../config/db";
+import { findContactInText, normalizeContact } from "../utils/contact";
 import { asyncHandler } from "../utils/asyncHandler";
 import { badRequest, forbidden, notFound } from "../utils/errors";
 import { isNonEmptyString, limitLength, optionalString } from "../utils/validate";
@@ -35,39 +43,63 @@ const withTimeout = <T>(p: Promise<T>) =>
 const HANDOFF_MS = 30 * 60 * 1000;
 const FALLBACK_REPLY = "Thanks for reaching out — the team will follow up with you directly.";
 
-/** POST /api/public/chat/start — { siteKey, name?, contact, message } → { leadId, reply } */
+async function aiChatBudgetLeft(tenantId: string, plan: string): Promise<boolean> {
+  const cap = planDef(plan).aiChatMessagesPerMonth;
+  const rows = await query<{ count: number }>(
+    `select count(*)::int as count from messages m join leads l on l.id = m.lead_id
+     where l.tenant_id = $1 and m.channel = 'chat' and m.direction = 'outbound' and m.ai_generated = true
+       and m.created_at >= date_trunc('month', now() at time zone 'Asia/Kolkata') at time zone 'Asia/Kolkata'`,
+    [tenantId]
+  );
+  return (rows[0]?.count ?? 0) < cap;
+}
+
+async function chatReply(site: Site, turns: ChatTurn[]): Promise<string> {
+  const tenant = await getTenant(site.tenantId);
+  if (!(await aiChatBudgetLeft(site.tenantId, tenant.plan))) return FALLBACK_REPLY;
+  if (!(await aiConfigService.isProfileReady(site.tenantId))) return FALLBACK_REPLY;
+  const reply = await withTimeout(aiService.replyInWidgetChat(site.tenantId, turns)).catch(() => null);
+  return reply || FALLBACK_REPLY;
+}
+
+const isContactLike = (v: string) => normalizeContact(v).kind !== "other";
+
+/** POST /api/public/chat/start — { siteKey, name?, contact?, message } → { leadId, reply } */
 export const start = asyncHandler(async (req: Request, res: Response) => {
   const body = req.body ?? {};
   const site = await resolveActiveWidgetSite(body.siteKey);
 
-  const contact = optionalString(body.contact);
-  if (!contact) throw badRequest("missing_contact");
   const message = optionalString(body.message);
   if (!message) throw badRequest("missing_message");
+  const text = limitLength(message, 2000, "message_too_long");
 
-  const { lead } = await leadService.createFromSite({
+  const given = optionalString(body.contact);
+  const found = (given && isContactLike(given) ? given : null) ?? findContactInText(text);
+  const qualified = Boolean(found);
+  const contact = found ?? `visitor-${randomBytes(5).toString("hex")}`;
+
+  const { lead, siteSettings } = await leadService.createFromSite({
     siteKey: site.apiKey,
     contact: limitLength(contact, 160, "contact_too_long"),
     name: limitLength(optionalString(body.name), 120, "name_too_long"),
-    message: limitLength(message, 2000, "message_too_long"),
+    message: text,
     source: "chat_widget",
+    qualified,
   });
 
-  const turns: ChatTurn[] = [{ role: "user", content: message }];
-  const reply = await withTimeout(aiService.replyInWidgetChat(site.tenantId, turns)).catch(() => null);
-  const replyText = reply || FALLBACK_REPLY;
+  if (qualified) {
+    await leadIntake.afterNewLead(site.tenantId, siteSettings, lead, { awaitReply: false, skipReply: true });
+  } else {
+    alertService.notifyOwnerOfNewChat(site.tenantId, siteSettings, lead, text).catch((err) => console.error("[alert]", err));
+  }
 
-  const out = await messageService.addMessage(lead.id, {
-    channel: "chat",
-    direction: "outbound",
-    body: replyText,
-    aiGenerated: true,
-  });
+  const replyText = await chatReply(site, [{ role: "user", content: text }]);
+  const out = await messageService.addMessage(lead.id, { channel: "chat", direction: "outbound", body: replyText, aiGenerated: true });
 
   res.status(201).json({ leadId: lead.id, reply: replyText, cursor: out.createdAt });
 });
 
-/** POST /api/public/chat/:leadId/message — { siteKey, message } → { reply } */
+/** POST /api/public/chat/:leadId/message — { siteKey, message, contact? } → { reply } */
 export const continueChat = asyncHandler(async (req: Request, res: Response) => {
   const body = req.body ?? {};
   const site = await resolveActiveWidgetSite(body.siteKey);
@@ -81,9 +113,17 @@ export const continueChat = asyncHandler(async (req: Request, res: Response) => 
 
   const inbound = await messageService.addMessage(lead.id, { channel: "chat", direction: "inbound", body: text });
 
+  if (!lead.qualified) {
+    const given = optionalString(body.contact);
+    const found = (given && isContactLike(given) ? given : null) ?? findContactInText(text);
+    if (found) {
+      const promoted = await leadService.promoteToLead(site.tenantId, lead.id, limitLength(found, 160, "contact_too_long"));
+      if (promoted) await leadIntake.afterNewLead(site.tenantId, site.settings, promoted, { awaitReply: false, skipReply: true });
+    }
+  }
+
   const history = await messageService.getMessagesForLead(site.tenantId, lead.id);
 
-  // A teammate stepped in recently — stay quiet so the AI doesn't talk over them.
   const lastOutbound = [...history].reverse().find((m) => m.direction === "outbound");
   if (lastOutbound && !lastOutbound.aiGenerated && Date.now() - ms(lastOutbound.createdAt) < HANDOFF_MS) {
     res.json({ reply: null, handoff: true, cursor: inbound.createdAt });
@@ -95,15 +135,8 @@ export const continueChat = asyncHandler(async (req: Request, res: Response) => 
     content: m.body,
   }));
 
-  const reply = await withTimeout(aiService.replyInWidgetChat(site.tenantId, turns)).catch(() => null);
-  const replyText = reply || FALLBACK_REPLY;
-
-  const out = await messageService.addMessage(lead.id, {
-    channel: "chat",
-    direction: "outbound",
-    body: replyText,
-    aiGenerated: true,
-  });
+  const replyText = await chatReply(site, turns);
+  const out = await messageService.addMessage(lead.id, { channel: "chat", direction: "outbound", body: replyText, aiGenerated: true });
 
   res.json({ reply: replyText, cursor: out.createdAt });
 });

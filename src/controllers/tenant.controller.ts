@@ -1,7 +1,8 @@
 import type { Request, Response } from "express";
 import * as tenantService from "../services/tenant.service";
 import { asyncHandler } from "../utils/asyncHandler";
-import { badRequest } from "../utils/errors";
+import { env } from "../config/env";
+import { AppError, badRequest } from "../utils/errors";
 import { limitLength } from "../utils/validate";
 import { PLANS, type Plan } from "../types";
 
@@ -24,5 +25,9 @@ export const updateIndustry = asyncHandler(async (req: Request, res: Response) =
 export const choosePlan = asyncHandler(async (req: Request, res: Response) => {
   const plan = req.body?.plan;
   if (!PLANS.includes(plan)) throw badRequest("invalid_plan");
+  if (plan === "pro" && !env.selfServePro) throw new AppError(402, "payment_required", "Upgrade to Pro through billing.");
+  if (plan === "free" && env.billingConfigured && (await tenantService.getTenant(req.tenantId!)).plan === "pro") {
+    throw badRequest("cancel_in_billing");
+  }
   res.json({ tenant: await tenantService.choosePlan(req.tenantId!, plan as Plan) });
 });

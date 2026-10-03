@@ -14,6 +14,7 @@ export interface Lead {
   source: LeadSource;
   status: LeadStatus;
   score: number;
+  qualified: boolean;
   customFields?: Record<string, unknown>;
   createdAt: string;
   lastActivityAt: string;
@@ -25,4 +26,5 @@ export interface IngestLeadInput {
   contact: string;
   message?: string;
   source?: LeadSource;
+  customFields?: Record<string, unknown>;
 }

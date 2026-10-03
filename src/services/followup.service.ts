@@ -1,4 +1,5 @@
 import { query } from "../config/db";
+import { env } from "../config/env";
 import { notFound } from "../utils/errors";
 import type { DueFollowup, Followup, FollowupLead, FollowupStatus } from "../types";
 
@@ -96,7 +97,7 @@ export const cancelFollowup = (tenantId: string, id: string) =>
 export const markFollowupSent = (tenantId: string, id: string, template?: string) =>
   transition(tenantId, id, ["manual"], `status = 'sent', sent_at = now(), template = coalesce($4, f.template)`, [template ?? null]);
 
-export async function claimDueFollowups(limit: number): Promise<DueFollowup[]> {
+export async function claimDueFollowups(limit: number, respectQuietHours: boolean = env.quietHours): Promise<DueFollowup[]> {
   const rows = await query<{ id: string; lead_id: string; template: string | null }>(
     `update followups f set status = 'processing'
      where f.id in (
@@ -107,6 +108,8 @@ export async function claimDueFollowups(limit: number): Promise<DueFollowup[]> {
          select s.settings from sites s where s.tenant_id = l.tenant_id order by s.created_at asc limit 1
        ) st on true
        where f2.run_at <= now()
+         and ($2::boolean = false
+              or extract(hour from now() at time zone coalesce(st.settings ->> 'timezone', 'Asia/Kolkata')) between 9 and 19)
          and (f2.status = 'approved'
               or (f2.status = 'pending' and t.plan = 'pro' and coalesce(st.settings ->> 'autofollow', 'false') = 'true'))
        order by f2.run_at asc
@@ -114,7 +117,7 @@ export async function claimDueFollowups(limit: number): Promise<DueFollowup[]> {
        for update of f2 skip locked
      )
      returning f.id, f.lead_id, f.template`,
-    [limit]
+    [limit, respectQuietHours]
   );
   return rows.map((r) => ({ id: r.id, leadId: r.lead_id, template: r.template }));
 }

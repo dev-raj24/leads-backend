@@ -227,6 +227,7 @@ export async function getActiveOfferForSiteKey(siteKey: string): Promise<Offer |
   const rows = await query<OfferRow>(
     `select o.* from offers o
      join sites s on s.tenant_id = o.tenant_id
+     join tenants t on t.id = o.tenant_id and t.plan = 'pro'
      where s.api_key = $1
        and o.active = true
        and (o.starts_at is null or o.starts_at <= now())
@@ -243,6 +244,7 @@ export async function getActiveOfferById(siteKey: string, offerId: string): Prom
   const rows = await query<OfferRow>(
     `select o.* from offers o
      join sites s on s.tenant_id = o.tenant_id
+     join tenants t on t.id = o.tenant_id and t.plan = 'pro'
      where s.api_key = $1
        and o.id = $2
        and o.active = true

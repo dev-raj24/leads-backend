@@ -5,6 +5,7 @@ import helmet from "helmet";
 import { env } from "./config/env";
 import { errorHandler, notFoundHandler } from "./middleware/error.middleware";
 import { limits } from "./middleware/rateLimit.middleware";
+import { siteGuard } from "./middleware/site-guard.middleware";
 import { apiRoutes } from "./routes";
 
 export const app = express();
@@ -19,7 +20,8 @@ const isPublicPath = (path: string) => path.startsWith("/api/public/") || path =
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use((req, res, next) => (isPublicPath(req.path) ? openCors : privateCors)(req, res, next));
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "1mb", verify: (req, _res, buf) => ((req as express.Request).rawBody = buf) }));
+app.use(["/api/public", "/api/ingest"], siteGuard);
 
 app.get("/health", (_req, res) => res.json({ ok: true, service: "leadworks-api" }));
 // Embed assets (widget.js) — served to arbitrary customer sites, cacheable, no auth.

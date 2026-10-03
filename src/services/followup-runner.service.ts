@@ -1,8 +1,11 @@
 import * as aiService from "./ai.service";
+import * as alertService from "./alert.service";
 import * as followupService from "./followup.service";
 import * as leadService from "./lead.service";
+import * as automatedMail from "./automated-mail.service";
 import * as mailer from "./mailer.service";
 import * as messageService from "./message.service";
+import { getTenant } from "./tenant.service";
 import type { DueFollowup, FollowupLead } from "../types";
 
 const BATCH_SIZE = 20;
@@ -18,12 +21,26 @@ async function processOne(due: DueFollowup): Promise<void> {
   }
 
   const text = due.template ?? (await aiService.draftFollowup(lead.tenantId, lead).catch(() => null)) ?? fallbackText(lead);
-  const emailed =
-    mailer.isMailConfigured() &&
-    mailer.looksLikeEmail(lead.contact) &&
-    (await mailer.sendMail({ to: lead.contact, subject: "Following up on your enquiry", text }));
+  const tenant = await getTenant(lead.tenantId);
+  const owners = await alertService.ownerEmails(lead.tenantId);
+  const result = mailer.isMailConfigured()
+    ? await automatedMail.sendAutomatedToLead({
+        tenantId: lead.tenantId,
+        businessName: tenant.name,
+        ownerEmail: owners[0],
+        to: lead.contact,
+        subject: "Following up on your enquiry",
+        text,
+      })
+    : { sent: false, skipped: undefined };
 
-  if (!emailed) {
+  if (result.skipped === "unsubscribed") {
+    await followupService.finishFollowup(due.id, "cancelled");
+    await leadService.recordEvent(lead.id, "followup_skipped", { reason: "unsubscribed" });
+    return;
+  }
+
+  if (!result.sent) {
     await followupService.finishFollowup(due.id, "manual", { template: text });
     return;
   }

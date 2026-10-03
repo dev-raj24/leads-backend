@@ -5,6 +5,7 @@
 
 import { query } from "../config/db";
 import type { CustomerSummary } from "../types";
+import { normalizeContact } from "../utils/contact";
 
 interface CustomerRow {
   contact: string;
@@ -44,8 +45,8 @@ function toCustomerSummary(row: CustomerRow): CustomerSummary {
 export async function getCustomersForTenant(tenantId: string): Promise<CustomerSummary[]> {
   const rows = await query<CustomerRow>(
     `${AGGREGATE_SELECT}
-     where tenant_id = $1
-     group by lower(contact)
+     where tenant_id = $1 and qualified = true
+     group by contact_key
      order by max(last_activity_at) desc`,
     [tenantId]
   );
@@ -55,9 +56,9 @@ export async function getCustomersForTenant(tenantId: string): Promise<CustomerS
 export async function getCustomerSummary(tenantId: string, contact: string): Promise<CustomerSummary | null> {
   const rows = await query<CustomerRow>(
     `${AGGREGATE_SELECT}
-     where tenant_id = $1 and lower(contact) = lower($2)
-     group by lower(contact)`,
-    [tenantId, contact]
+     where tenant_id = $1 and qualified = true and contact_key = $2
+     group by contact_key`,
+    [tenantId, normalizeContact(contact).key]
   );
   return rows[0] ? toCustomerSummary(rows[0]) : null;
 }

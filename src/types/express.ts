@@ -4,6 +4,7 @@ declare global {
     interface Request {
       tenantId?: string;
       userId?: string;
+      rawBody?: Buffer;
     }
   }
 }

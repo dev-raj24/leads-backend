@@ -54,7 +54,7 @@ describe("alerts", () => {
 
     await api.call("POST", "/api/ingest/lead", { body: { site_key: siteKey, name: "Asha", contact: "asha@x.co", message: "Hello" } });
     await settle();
-    const alert = sent.find((m) => m.to === email);
+    const alert = sent.find((m) => m.to === email && /New lead/.test(m.subject));
     assert.ok(alert);
     assert.match(alert.subject, /New lead: Asha/);
     assert.match(alert.text, /Hello/);
@@ -63,18 +63,19 @@ describe("alerts", () => {
     await api.call("PATCH", `/api/sites/${siteId}/settings`, { token, body: { settings: { alerts: false } } });
     await api.call("POST", "/api/ingest/lead", { body: { site_key: siteKey, contact: "b@x.co", message: "again" } });
     await settle();
-    assert.equal(sent.filter((m) => m.to === email).length, 0);
+    assert.equal(sent.filter((m) => m.to === email && /New lead/.test(m.subject)).length, 0);
   });
 
   it("emails the AI reply to a lead who left an email address", async () => {
     stubMail();
     stubAi("Thanks Asha, we'll be in touch.");
-    const { siteKey } = await api.signup("email_reply");
+    const { siteKey } = await api.signup("email_reply", { plan: "pro" });
     await api.call("POST", "/api/ingest/lead", { body: { site_key: siteKey, name: "Asha", contact: "asha@x.co", message: "Hello" } });
     await settle();
     const toLead = sent.find((m) => m.to === "asha@x.co");
     assert.ok(toLead);
-    assert.equal(toLead.text, "Thanks Asha, we'll be in touch.");
+    assert.ok(toLead.text.startsWith("Thanks Asha, we'll be in touch."));
+    assert.match(toLead.text, /api\/public\/unsubscribe\?t=/);
   });
 });
 
@@ -112,7 +113,7 @@ describe("follow-ups", () => {
     assert.equal(await runDueFollowups(), 1);
     assert.equal(sent.length, 1);
     assert.equal(sent[0].to, "riya@x.co");
-    assert.equal(sent[0].text, "Hi Riya, shall we book a slot?");
+    assert.ok(sent[0].text.startsWith("Hi Riya, shall we book a slot?"));
 
     const after = await api.call("GET", "/api/followups", { token });
     const done = after.body.followups.find((f: any) => f.id === id);
@@ -134,7 +135,7 @@ describe("follow-ups", () => {
     await api.call("POST", `/api/leads/${leadId}/followups`, { token, body: { runAt: past() } });
     await runDueFollowups();
     const nudge = sent.find((m) => m.subject === "Following up on your enquiry");
-    assert.equal(nudge?.text, "Hi Riya, just checking in!");
+    assert.ok(nudge?.text.startsWith("Hi Riya, just checking in!"));
   });
 
   it("keeps auto follow-up off on the free plan even if the setting is forced on", async () => {

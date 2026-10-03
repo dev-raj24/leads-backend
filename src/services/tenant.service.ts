@@ -8,6 +8,9 @@ interface TenantRow {
   plan: string;
   industry: string | null;
   onboarding_completed: boolean;
+  plan_status: string;
+  plan_renews_at: string | null;
+  razorpay_subscription_id: string | null;
   created_at: string;
 }
 
@@ -17,6 +20,8 @@ const toTenant = (row: TenantRow): Tenant => ({
   plan: row.plan,
   industry: row.industry,
   onboardingCompleted: row.onboarding_completed,
+  planStatus: row.plan_status,
+  planRenewsAt: row.plan_renews_at,
   createdAt: row.created_at,
 });
 

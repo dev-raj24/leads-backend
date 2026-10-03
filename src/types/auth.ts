@@ -4,6 +4,8 @@ export interface Tenant {
   plan: string;
   industry: string | null;
   onboardingCompleted: boolean;
+  planStatus: string;
+  planRenewsAt: string | null;
   createdAt: string;
 }
 
@@ -12,6 +14,7 @@ export interface AuthUser {
   tenantId: string;
   email: string;
   role: string;
+  emailVerified: boolean;
 }
 
 export interface LoginInput {

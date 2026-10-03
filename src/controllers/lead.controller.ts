@@ -3,9 +3,7 @@
 
 import type { Request, Response } from "express";
 import * as aiService from "../services/ai.service";
-import * as alertService from "../services/alert.service";
-import * as followupService from "../services/followup.service";
-import * as autoReplyService from "../services/autoreply.service";
+import * as leadIntake from "../services/lead-intake.service";
 import * as leadService from "../services/lead.service";
 import * as messageService from "../services/message.service";
 import * as leadImportService from "../services/lead-import.service";
@@ -36,16 +34,16 @@ export const ingest = asyncHandler(async (req: Request, res: Response) => {
   if (!isNonEmptyString(contact)) throw badRequest("missing_contact");
   if (isNonEmptyString(body.website)) return res.status(201).json({ ok: true });
 
-  const { lead, tenantId, siteSettings } = await leadService.createFromSite({
+  const { lead, tenantId, siteSettings, duplicate } = await leadService.createFromSite({
     siteKey: limitLength(siteKey, 100, "invalid_site_key"),
     contact: limitLength(contact.trim(), 160, "contact_too_long"),
     name: limitLength(optionalString(body.name), 120, "name_too_long"),
     message: limitLength(optionalString(body.message), 2000, "message_too_long"),
     source: isIngestSource(body.source) ? body.source : undefined,
   });
-  alertService.notifyOwnerOfNewLead(tenantId, siteSettings, lead).catch((err) => console.error("[alert]", err));
-  followupService.scheduleDefaultFollowup(lead.id).catch((err) => console.error("[followup]", err));
-  const reply = await autoReplyService.replyToNewLead(tenantId, siteSettings, lead);
+  if (duplicate) return res.status(201).json({ ok: true, id: lead.id, reply: null, duplicate: true });
+
+  const { reply } = await leadIntake.afterNewLead(tenantId, siteSettings, lead);
   res.status(201).json({ ok: true, id: lead.id, reply });
 });
 

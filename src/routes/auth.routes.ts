@@ -12,3 +12,6 @@ authRoutes.post("/auth/forgot-password", limits.auth, authController.forgotPassw
 authRoutes.post("/auth/reset-password", limits.auth, authController.resetPassword);
 authRoutes.patch("/auth/password", requireAuth, limits.auth, authController.changePassword);
 authRoutes.patch("/auth/email", requireAuth, limits.auth, authController.changeEmail);
+authRoutes.post("/auth/verify-email", limits.auth, authController.verifyEmail);
+authRoutes.post("/auth/resend-verification", requireAuth, limits.auth, authController.resendVerification);
+authRoutes.get("/auth/me", requireAuth, authController.me);

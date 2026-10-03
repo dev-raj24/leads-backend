@@ -61,3 +61,11 @@ export async function saveBusinessProfile(tenantId: string, profile: BusinessPro
   );
   return profile;
 }
+
+export function hasUsableProfile(profile: BusinessProfile): boolean {
+  return profile.about.trim().length >= 10 || profile.services.length > 0 || profile.timings.trim().length > 0 || profile.faqs.trim().length >= 10;
+}
+
+export async function isProfileReady(tenantId: string): Promise<boolean> {
+  return hasUsableProfile((await getBusinessProfile(tenantId)).profile);
+}

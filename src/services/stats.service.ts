@@ -9,11 +9,11 @@ export async function isValidTimezone(tz: string): Promise<boolean> {
 export async function getOverview(tenantId: string, days: number, tz: string): Promise<StatsOverview> {
   const [statusRows, sourceRows, windowRows, dailyRows, followupRows, aiRows, replyRows] = await Promise.all([
     query<{ status: string; count: number }>(
-      `select status, count(*)::int as count from leads where tenant_id = $1 group by status`,
+      `select status, count(*)::int as count from leads where tenant_id = $1 and qualified = true group by status`,
       [tenantId]
     ),
     query<{ source: string; count: number }>(
-      `select source, count(*)::int as count from leads where tenant_id = $1 group by source order by count desc`,
+      `select source, count(*)::int as count from leads where tenant_id = $1 and qualified = true group by source order by count desc`,
       [tenantId]
     ),
     query<{ today: number; last7: number; prev7: number }>(
@@ -21,7 +21,7 @@ export async function getOverview(tenantId: string, days: number, tz: string): P
          count(*) filter (where created_at >= (date_trunc('day', now() at time zone $2) at time zone $2))::int as today,
          count(*) filter (where created_at >= now() - interval '7 days')::int as last7,
          count(*) filter (where created_at >= now() - interval '14 days' and created_at < now() - interval '7 days')::int as prev7
-       from leads where tenant_id = $1`,
+       from leads where tenant_id = $1 and qualified = true`,
       [tenantId, tz]
     ),
     query<{ date: string; leads: number; won: number }>(
@@ -36,7 +36,7 @@ export async function getOverview(tenantId: string, days: number, tz: string): P
               count(l.id)::int as leads,
               (count(l.id) filter (where l.status = 'won'))::int as won
        from days
-       left join leads l on l.tenant_id = $1 and (l.created_at at time zone $2)::date = days.d
+       left join leads l on l.tenant_id = $1 and l.qualified = true and (l.created_at at time zone $2)::date = days.d
        group by days.d
        order by days.d`,
       [tenantId, tz, days]
@@ -60,7 +60,7 @@ export async function getOverview(tenantId: string, days: number, tz: string): P
        join lateral (
          select min(created_at) as first_out from messages where lead_id = l.id and direction = 'outbound'
        ) m on m.first_out is not null
-       where l.tenant_id = $1 and l.created_at >= now() - interval '30 days'`,
+       where l.tenant_id = $1 and l.qualified = true and l.created_at >= now() - interval '30 days'`,
       [tenantId]
     ),
   ]);

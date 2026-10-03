@@ -86,7 +86,7 @@ describe("business profile", () => {
 describe("auto-reply", () => {
   it("replies to a new lead, stores the thread and grounds the prompt in the business profile", async () => {
     stubAi("Hi Rohit, a root canal starts at ₹4,500. Shall I book you in?");
-    const { token, siteKey } = await api.signup("auto");
+    const { token, siteKey } = await api.signup("auto", { plan: "pro" });
     await api.call("PUT", "/api/ai-config", {
       token,
       body: { services: [{ name: "Root canal", price: "4,500", hidePrice: false }], about: "Smile Clinic" },
@@ -107,7 +107,7 @@ describe("auto-reply", () => {
 
   it("tells the AI never to quote a hidden price", async () => {
     stubAi("Happy to help — could you call us so we can quote the right price?");
-    const { token, siteKey } = await api.signup("hideprice");
+    const { token, siteKey } = await api.signup("hideprice", { plan: "pro" });
     await api.call("PUT", "/api/ai-config", {
       token,
       body: { services: [{ name: "Custom implants", price: "", hidePrice: true }] },
@@ -218,25 +218,31 @@ describe("assistant chat", () => {
 });
 
 describe("skipped onboarding", () => {
-  it("still captures the lead and gives a safe, honest fallback reply when the business profile is empty", async () => {
-    stubAi("Thanks for reaching out! I don't have that on hand right now, but our team will call you back shortly — what's a good time to reach you?");
-    const { token, siteKey } = await api.signup("skipped");
-    await api.call("PATCH", "/api/tenant/plan", { token, body: { plan: "free" } });
+  it("still captures the lead but keeps the AI quiet until the business profile has something real in it", async () => {
+    const spy = stubAi("Thanks for reaching out!");
+    const { token, siteKey } = await api.signup("skipped", { plan: "pro" });
+    await api.call("PUT", "/api/ai-config", { token, body: { about: "" } });
 
     const res = await api.call("POST", "/api/ingest/lead", {
       body: { site_key: siteKey, name: "Rohit", contact: "rohit@x.co", message: "Do you have Sunday slots and what's the price?" },
     });
     assert.equal(res.status, 201);
-    assert.ok(res.body.reply);
-    assert.doesNotMatch(res.body.reply, /₹\d/);
-
-    assert.match(calls[0].system, /Business name:/);
-    assert.match(calls[0].system, /team will call back shortly/);
-    assert.doesNotMatch(calls[0].system, /Services:/);
-    assert.doesNotMatch(calls[0].system, /Opening hours:/);
+    assert.equal(res.body.reply, null);
+    assert.equal(spy.mock.callCount(), 0);
 
     const leads = await api.call("GET", "/api/leads", { token });
     assert.equal(leads.body.leads.length, 1);
     assert.equal(leads.body.leads[0].status, "new");
+    const detail = await api.call("GET", `/api/leads/${leads.body.leads[0].id}`, { token });
+    assert.equal(detail.body.messages.length, 1);
+  });
+
+  it("never sends an AI reply on the free plan, even with a full profile", async () => {
+    const spy = stubAi("Thanks!");
+    const { token, siteKey } = await api.signup("free_noai");
+    await api.call("PUT", "/api/ai-config", { token, body: { about: "A family dental clinic open all week in Pune." } });
+    const res = await api.call("POST", "/api/ingest/lead", { body: { site_key: siteKey, contact: "m@x.co", message: "hi" } });
+    assert.equal(res.body.reply, null);
+    assert.equal(spy.mock.callCount(), 0);
   });
 });

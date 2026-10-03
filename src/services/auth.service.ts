@@ -14,13 +14,15 @@ interface UserRow {
   email: string;
   password_hash: string;
   role: string;
+  email_verified_at: string | null;
 }
 
 const DUMMY_HASH = bcrypt.hashSync("leadworks-dummy-password", env.bcryptRounds);
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
+const VERIFY_TOKEN_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 
 function toAuthUser(row: UserRow): AuthUser {
-  return { id: row.id, tenantId: row.tenant_id, email: row.email, role: row.role };
+  return { id: row.id, tenantId: row.tenant_id, email: row.email, role: row.role, emailVerified: row.email_verified_at !== null };
 }
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -66,6 +68,8 @@ export async function signup(
 
     await client.query("commit");
 
+    await sendVerification(userRows.rows[0].id, input.email).catch((err) => console.error("[verify]", err));
+
     return {
       user: toAuthUser(userRows.rows[0]),
       site: toSite(siteRows.rows[0]),
@@ -88,6 +92,42 @@ export async function login(input: LoginInput): Promise<{ user: AuthUser; tenant
   if (!row || !ok) throw new InvalidCredentialsError();
 
   return { user: toAuthUser(row), tenant: await getTenant(row.tenant_id) };
+}
+
+async function sendVerification(userId: string, email: string): Promise<void> {
+  const rawToken = randomBytes(32).toString("hex");
+  await query(
+    `update users set verify_token_hash = $2, verify_token_expires_at = now() + $3::interval where id = $1`,
+    [userId, hashToken(rawToken), `${VERIFY_TOKEN_TTL_MS / 1000} seconds`]
+  );
+  await mailer.sendMail({
+    to: email,
+    subject: "Confirm your email for Leadworks",
+    text: `Welcome to Leadworks.\n\nConfirm your email so we can send you new-lead alerts:\n${env.appUrl}/verify-email?token=${rawToken}\n\nThe link works for 3 days. If you didn't sign up, ignore this email.`,
+  });
+}
+
+export async function resendVerification(userId: string): Promise<void> {
+  const rows = await query<UserRow>(`select * from users where id = $1`, [userId]);
+  const user = rows[0];
+  if (!user || user.email_verified_at) return;
+  await sendVerification(user.id, user.email);
+}
+
+export async function verifyEmail(token: string): Promise<AuthUser> {
+  const rows = await query<UserRow>(
+    `update users set email_verified_at = now(), verify_token_hash = null, verify_token_expires_at = null
+     where verify_token_hash = $1 and verify_token_expires_at > now()
+     returning *`,
+    [hashToken(token)]
+  );
+  if (!rows[0]) throw new InvalidResetTokenError();
+  return toAuthUser(rows[0]);
+}
+
+export async function getUser(userId: string): Promise<{ user: AuthUser; tenant: Tenant } | null> {
+  const rows = await query<UserRow>(`select * from users where id = $1`, [userId]);
+  return rows[0] ? { user: toAuthUser(rows[0]), tenant: await getTenant(rows[0].tenant_id) } : null;
 }
 
 /** Always succeeds from the caller's point of view — never reveals whether the email exists. */
@@ -131,7 +171,11 @@ export async function changeEmail(userId: string, newEmail: string, currentPassw
   const existing = await query<{ id: string }>(`select id from users where email = $1 and id <> $2`, [newEmail, userId]);
   if (existing[0]) throw new EmailInUseError();
 
-  const updated = await query<UserRow>(`update users set email = $2 where id = $1 returning *`, [userId, newEmail]);
+  const updated = await query<UserRow>(
+    `update users set email = $2, email_verified_at = null where id = $1 returning *`,
+    [userId, newEmail]
+  );
+  await sendVerification(userId, newEmail).catch((err) => console.error("[verify]", err));
   return toAuthUser(updated[0]);
 }
 

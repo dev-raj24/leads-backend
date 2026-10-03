@@ -28,7 +28,17 @@ export const updateSettings = asyncHandler(async (req: Request, res: Response) =
     if (tenant.plan !== "pro") settings.autofollow = false;
   }
 
+  if ("allowedDomains" in settings) settings.allowedDomains = siteService.normalizeDomainList(settings.allowedDomains);
+
   const site = await siteService.updateSiteSettings(req.tenantId!, req.params.id, settings);
   if (!site) throw notFound();
   res.json({ site });
+});
+
+/** GET /api/sites/me/install — has the script ever phoned home, and who was turned away. */
+export const installStatus = asyncHandler(async (req: Request, res: Response) => {
+  const site = await siteService.getPrimarySiteForTenant(req.tenantId!);
+  if (!site) throw notFound();
+  const status = await siteService.getInstallStatus(req.tenantId!, site.id);
+  res.json({ status, allowedDomains: siteService.normalizeDomainList(site.settings.allowedDomains) });
 });

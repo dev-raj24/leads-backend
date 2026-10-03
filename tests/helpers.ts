@@ -5,7 +5,7 @@ import { pool } from "../src/config/db";
 
 export interface Api {
   call: (method: string, path: string, options?: { token?: string; body?: unknown; headers?: Record<string, string> }) => Promise<{ status: number; body: any }>;
-  signup: (label?: string) => Promise<{ token: string; siteKey: string; siteId: string; email: string }>;
+  signup: (label?: string, options?: { plan?: "free" | "pro"; verified?: boolean }) => Promise<{ token: string; siteKey: string; siteId: string; email: string }>;
   close: () => Promise<void>;
 }
 
@@ -35,11 +35,13 @@ export async function startApi(): Promise<Api> {
     return { status: res.status, body };
   };
 
-  const signup: Api["signup"] = async (label = "t") => {
+  const signup: Api["signup"] = async (label = "t", options = {}) => {
     const email = `${label}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}@example.test`;
     const res = await call("POST", "/api/auth/signup", {
       body: { businessName: `Biz ${label}`, email, password: "secret123", servicesInfo: "Dental care" },
     });
+    if (options.verified !== false) await pool?.query(`update users set email_verified_at = now() where email = $1`, [email]);
+    if (options.plan === "pro") await call("PATCH", "/api/tenant/plan", { token: res.body.token, body: { plan: "pro" } });
     return { token: res.body.token, siteKey: res.body.site.apiKey, siteId: res.body.site.id, email };
   };
 

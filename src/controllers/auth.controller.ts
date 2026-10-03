@@ -82,3 +82,23 @@ export const changeEmail = asyncHandler(async (req: Request, res: Response) => {
   const user = await authService.changeEmail(req.userId!, newEmail.trim().toLowerCase(), currentPassword);
   res.json({ user });
 });
+
+/** POST /api/auth/verify-email — { token } */
+export const verifyEmail = asyncHandler(async (req: Request, res: Response) => {
+  const { token } = req.body ?? {};
+  if (!isNonEmptyString(token)) throw badRequest("missing_token");
+  res.json({ user: await authService.verifyEmail(token) });
+});
+
+/** POST /api/auth/resend-verification (signed in) */
+export const resendVerification = asyncHandler(async (req: Request, res: Response) => {
+  await authService.resendVerification(req.userId!);
+  res.json({ ok: true });
+});
+
+/** GET /api/auth/me (signed in) */
+export const me = asyncHandler(async (req: Request, res: Response) => {
+  const found = await authService.getUser(req.userId!);
+  if (!found) return res.status(401).json({ error: "invalid_token" });
+  res.json(found);
+});

@@ -33,6 +33,7 @@ describe("forgot / reset password", () => {
   it("emails a working reset link and never reveals whether the email exists", async () => {
     stubMail();
     const { email } = await api.signup("reset");
+    sent = [];
 
     const known = await api.call("POST", "/api/auth/forgot-password", { body: { email } });
     const unknown = await api.call("POST", "/api/auth/forgot-password", { body: { email: "ghost@example.test" } });
@@ -54,6 +55,7 @@ describe("forgot / reset password", () => {
   it("rejects a used, wrong or expired token, and enforces the password policy", async () => {
     stubMail();
     const { email } = await api.signup("reset_bad");
+    sent = [];
     await api.call("POST", "/api/auth/forgot-password", { body: { email } });
     const token = extractToken(sent[0].text);
 

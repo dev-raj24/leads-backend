@@ -35,6 +35,20 @@ export const env = {
   smtpUrl: process.env.SMTP_URL ?? "",
   mailFrom: process.env.MAIL_FROM ?? "Leadworks <no-reply@leadworks.local>",
   appUrl: process.env.APP_URL ?? "http://localhost:3000",
+  publicApiUrl: (process.env.PUBLIC_API_URL ?? `http://localhost:${process.env.PORT ?? 4001}`).replace(/\/$/, ""),
+  quietHours: process.env.QUIET_HOURS !== "off" && nodeEnv !== "test",
+  razorpay: {
+    keyId: process.env.RAZORPAY_KEY_ID ?? "",
+    keySecret: process.env.RAZORPAY_KEY_SECRET ?? "",
+    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET ?? "",
+    planId: process.env.RAZORPAY_PRO_PLAN_ID ?? "",
+  },
+  get billingConfigured() {
+    return Boolean(this.razorpay.keyId && this.razorpay.keySecret && this.razorpay.planId);
+  },
+  get selfServePro() {
+    return !isProd && !this.billingConfigured;
+  },
   jobsEnabled: process.env.JOBS !== "off" && nodeEnv !== "test",
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
   geminiModel: process.env.GEMINI_MODEL ?? "gemini-3.8-flash",

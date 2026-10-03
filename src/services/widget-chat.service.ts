@@ -5,7 +5,8 @@ import { query } from "../config/db";
 export interface ChatConversation {
   leadId: string;
   name: string | null;
-  contact: string;
+  contact: string | null;
+  isLead: boolean;
   status: string;
   messageCount: number;
   lastMessage: string;
@@ -19,6 +20,7 @@ interface Row {
   id: string;
   name: string | null;
   contact: string;
+  qualified: boolean;
   status: string;
   created_at: string;
   message_count: string;
@@ -30,7 +32,7 @@ interface Row {
 
 export async function listConversations(tenantId: string): Promise<ChatConversation[]> {
   const rows = await query<Row>(
-    `select l.id, l.name, l.contact, l.status, l.created_at,
+    `select l.id, l.name, l.contact, l.qualified, l.status, l.created_at,
             (select count(*) from messages m where m.lead_id = l.id)::text as message_count,
             lm.body as last_body, lm.created_at as last_at,
             lm.direction as last_direction, lm.ai_generated as last_ai
@@ -50,7 +52,8 @@ export async function listConversations(tenantId: string): Promise<ChatConversat
     return {
       leadId: r.id,
       name: r.name,
-      contact: r.contact,
+      contact: r.qualified ? r.contact : null,
+      isLead: r.qualified,
       status: r.status,
       messageCount: Number(r.message_count),
       lastMessage: r.last_body,
