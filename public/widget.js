@@ -16,7 +16,7 @@
     ":host{display:block}" +
     "*{box-sizing:border-box}" +
     ".lw-root{font:14px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#121a26;" +
-    "--lw-accent:#0b5d4b;--lw-bg:#0b5d4b;--lw-fg:#fff;--lw-btn-bg:#d9f99d;--lw-btn-fg:#121a26;--lw-radius:14px;--lw-btn-radius:999px}" +
+    "--lw-accent:#0b5d4b;--lw-on-accent:#fff;--lw-bg:#0b5d4b;--lw-fg:#fff;--lw-btn-bg:#d9f99d;--lw-btn-fg:#121a26;--lw-radius:14px;--lw-btn-radius:999px}" +
     ".lw-root.lw-square{--lw-radius:4px;--lw-btn-radius:4px}" +
     ".lw-root.lw-inherit-font{font-family:inherit}" +
     "button,input,textarea{font:inherit;color:inherit}" +
@@ -45,7 +45,7 @@
     ".lw-form{display:flex;flex-direction:column;gap:10px}" +
     ".lw-input{width:100%;border:1px solid #d8d2c4;border-radius:calc(var(--lw-radius) * .6);padding:10px 12px;background:#fff;outline:none}" +
     ".lw-input:focus{border-color:var(--lw-accent)}" +
-    ".lw-submit,.lw-action{background:var(--lw-accent);color:#fff;border:0;border-radius:var(--lw-btn-radius);padding:11px 16px;font-weight:600;cursor:pointer}" +
+    ".lw-submit,.lw-action{background:var(--lw-accent);color:var(--lw-on-accent);border:0;border-radius:var(--lw-btn-radius);padding:11px 16px;font-weight:600;cursor:pointer}" +
     ".lw-submit[disabled]{opacity:.6;cursor:default}" +
     ".lw-error{color:#b91c1c;font-size:13px}" +
     ".lw-success{text-align:center;padding:6px 0}" +
@@ -54,7 +54,7 @@
     /* chat */
     ".lw-chat-launcher{position:fixed;z-index:" +
     Z +
-    ";bottom:16px;border:0;cursor:pointer;background:var(--lw-accent);color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;gap:8px;font-weight:600;font-size:14px;width:56px;height:56px;border-radius:50%}" +
+    ";bottom:16px;border:0;cursor:pointer;background:var(--lw-accent);color:var(--lw-on-accent);box-shadow:0 4px 16px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;gap:8px;font-weight:600;font-size:14px;width:56px;height:56px;border-radius:50%}" +
     ".lw-chat-launcher.lw-label{width:auto;height:48px;padding:0 20px;border-radius:var(--lw-btn-radius)}" +
     ".lw-chat-launcher.lw-left,.lw-chat-panel.lw-left{left:16px}.lw-chat-launcher.lw-right,.lw-chat-panel.lw-right{right:16px}" +
     ".lw-dot{display:none;position:absolute;top:-2px;width:14px;height:14px;border-radius:50%;background:#e11d48;border:2px solid #fff}" +
@@ -62,13 +62,13 @@
     ".lw-chat-panel{position:fixed;z-index:" +
     Z +
     ";bottom:82px;width:340px;max-width:calc(100vw - 32px);max-height:70vh;background:#fdfcf9;border-radius:var(--lw-radius);box-shadow:0 8px 32px rgba(0,0,0,.25);display:flex;flex-direction:column;overflow:hidden}" +
-    ".lw-chat-header{background:var(--lw-accent);color:#fff;padding:14px 16px}" +
+    ".lw-chat-header{background:var(--lw-accent);color:var(--lw-on-accent);padding:14px 16px}" +
     ".lw-chat-title{font-weight:600;font-size:15px}" +
     ".lw-chat-sub{opacity:.85;font-size:12px;margin-top:2px}" +
     ".lw-chat-body{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;min-height:160px}" +
     ".lw-line{display:flex;flex-direction:column}.lw-line.lw-me{align-items:flex-end}.lw-line.lw-them{align-items:flex-start}" +
     ".lw-msg{max-width:80%;padding:8px 12px;border-radius:var(--lw-radius);white-space:pre-wrap;word-break:break-word}" +
-    ".lw-msg-me{background:var(--lw-accent);color:#fff}" +
+    ".lw-msg-me{background:var(--lw-accent);color:var(--lw-on-accent)}" +
     ".lw-msg-ai{background:#efece3;color:#121a26}" +
     ".lw-msg-team{background:" +
     LIME +
@@ -77,7 +77,7 @@
     ".lw-chat-note{text-align:center;font-size:12px;color:#6b7280}" +
     ".lw-chat-row{border-top:1px solid #e5e0d8;padding:10px;display:flex;gap:8px}" +
     ".lw-chat-input{flex:1;min-width:0;border:1px solid #d8d2c4;border-radius:var(--lw-btn-radius);padding:8px 14px;outline:none;background:#fff}" +
-    ".lw-chat-send{background:var(--lw-accent);color:#fff;border:0;border-radius:var(--lw-btn-radius);padding:8px 16px;font-weight:600;font-size:13px;cursor:pointer}" +
+    ".lw-chat-send{background:var(--lw-accent);color:var(--lw-on-accent);border:0;border-radius:var(--lw-btn-radius);padding:8px 16px;font-weight:600;font-size:13px;cursor:pointer}" +
     /* blog */
     ".lw-root.lw-blog{color:inherit;font-size:15px;line-height:1.6}" +
     ".lw-blog-card{margin:0 0 28px;padding-bottom:28px;border-bottom:1px solid #e5e0d8}" +
@@ -165,18 +165,111 @@
     return { host: host, root: root };
   }
 
+  // ---- brand colour: "auto" reads the colour the owner's own website already uses --------------
+  var DEFAULT_BRAND = "#0b5d4b";
+  var detectedBrand;
+
+  // Any CSS colour string (hex, rgb, hsl, named, var()) -> {r,g,b,a}, by letting the browser compute it.
+  function computeColor(value) {
+    if (!value) return null;
+    var probe = document.createElement("span");
+    probe.style.cssText = "position:absolute;visibility:hidden;color:" + value;
+    if (!probe.style.color) return null;
+    (document.body || document.documentElement).appendChild(probe);
+    var rgb = getComputedStyle(probe).color;
+    probe.remove();
+    var m = /rgba?\(\s*(\d+)[ ,]+(\d+)[ ,]+(\d+)(?:[ ,/]+([\d.]+))?/.exec(rgb);
+    return m ? { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] } : null;
+  }
+
+  function hex(c) {
+    return "#" + [c.r, c.g, c.b].map(function (n) { return ("0" + n.toString(16)).slice(-2); }).join("");
+  }
+
+  function hsl(c) {
+    var r = c.r / 255, g = c.g / 255, b = c.b / 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+    var sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+    return { s: sat, l: l };
+  }
+
+  // A brand colour is visible and clearly coloured: not white, black or grey, and not see-through.
+  function looksLikeBrand(c) {
+    if (!c || c.a < 0.6) return false;
+    var h = hsl(c);
+    return h.s > 0.28 && h.l > 0.14 && h.l < 0.86;
+  }
+
+  function luminance(c) {
+    var f = function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+  }
+
+  // Text colour that stays readable on top of the accent.
+  function readableOn(colorHex) {
+    var c = computeColor(colorHex);
+    return c && luminance(c) > 0.42 ? "#111827" : "#ffffff";
+  }
+
+  function isShown(node) {
+    var r = node.getBoundingClientRect();
+    return r.width > 36 && r.height > 18 && getComputedStyle(node).visibility !== "hidden";
+  }
+
+  function detectBrand() {
+    if (detectedBrand !== undefined) return detectedBrand;
+    var found = null;
+    var take = function (value) {
+      var c = computeColor(value);
+      if (looksLikeBrand(c)) { found = hex(c); return true; }
+      return false;
+    };
+    try {
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta && take(meta.getAttribute("content"))) return (detectedBrand = found);
+
+      var rootStyle = getComputedStyle(document.documentElement);
+      var vars = ["--primary", "--primary-color", "--brand", "--brand-color", "--color-primary", "--accent", "--accent-color", "--theme-color", "--main-color", "--bs-primary", "--wp--preset--color--primary", "--e-global-color-primary"];
+      for (var i = 0; i < vars.length; i++) {
+        var v = rootStyle.getPropertyValue(vars[i]).trim();
+        if (v && take(v)) return (detectedBrand = found);
+      }
+
+      var ctas = document.querySelectorAll('a[class*="btn"], button[class*="btn"], .button, a[class*="button"], button[class*="button"], [class*="cta"], [class*="primary"], button[type="submit"], input[type="submit"]');
+      for (var j = 0; j < ctas.length && j < 60; j++) {
+        if (isShown(ctas[j]) && take(getComputedStyle(ctas[j]).backgroundColor)) return (detectedBrand = found);
+      }
+
+      var bars = document.querySelectorAll("header, nav, [class*='navbar'], [class*='header']");
+      for (var k = 0; k < bars.length && k < 8; k++) {
+        if (take(getComputedStyle(bars[k]).backgroundColor)) return (detectedBrand = found);
+      }
+
+      var links = document.querySelectorAll("main a, article a, p a, a");
+      for (var n = 0; n < links.length && n < 40; n++) {
+        if (isShown(links[n]) && take(getComputedStyle(links[n]).color)) return (detectedBrand = found);
+      }
+    } catch (e) {}
+    return (detectedBrand = null);
+  }
+
+  // "auto" -> the website's own colour, or the default green if none is found. Anything else is used as given.
+  function resolveBrand(setting) {
+    if (setting === "auto" || !setting) return detectBrand() || DEFAULT_BRAND;
+    return setting;
+  }
+
   function offerVars(root, offer) {
-    var base = offer.color || "#0b5d4b";
+    var base = resolveBrand(offer.color);
     var soft = offer.styleVariant === "soft";
+    var onBase = readableOn(base);
     root.style.setProperty("--lw-accent", base);
+    root.style.setProperty("--lw-on-accent", onBase);
     root.style.setProperty("--lw-bg", soft ? base + "22" : base);
     root.style.setProperty("--lw-border", base + "55");
-    root.style.setProperty(
-      "--lw-fg",
-      offer.textColor || (soft ? base : "#ffffff"),
-    );
+    root.style.setProperty("--lw-fg", offer.textColor || (soft ? base : onBase));
     root.style.setProperty("--lw-btn-bg", soft ? base : LIME);
-    root.style.setProperty("--lw-btn-fg", soft ? "#fff" : "#121a26");
+    root.style.setProperty("--lw-btn-fg", soft ? onBase : "#121a26");
   }
 
   function validContact(v) {
@@ -472,7 +565,9 @@
     var pollTimer = null;
 
     var m = mount(null, design, design.customCss);
-    m.root.style.setProperty("--lw-accent", design.color || "#0b5d4b");
+    var accent = resolveBrand(design.color);
+    m.root.style.setProperty("--lw-accent", accent);
+    m.root.style.setProperty("--lw-on-accent", readableOn(accent));
 
     var launcher = el(
       "button",
@@ -482,9 +577,7 @@
     );
     launcher.setAttribute("aria-label", design.title || "Chat");
     var icon =
-      '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M4 4h16v12H7l-3 3V4z" stroke="' +
-      LIME +
-      '" stroke-width="2" stroke-linejoin="round"/></svg>';
+      '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M4 4h16v12H7l-3 3V4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>';
     launcher.innerHTML =
       icon + (design.launcher === "label" ? "<span></span>" : "");
     if (design.launcher === "label")
