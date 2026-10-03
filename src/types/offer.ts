@@ -10,6 +10,13 @@ export interface Offer {
   styleVariant?: string;
   actionType?: string;
   promoCode?: string;
+  buttonText?: string;
+  successMessage?: string;
+  modalDelay?: number;
+  fontFamily?: string;
+  radius?: string;
+  customCss?: string;
+  textColor?: string;
   targetUrl?: string;
   whatsappNumber?: string;
   startsAt: string | null;

@@ -43,6 +43,13 @@ export function toOffer(row: OfferRow): Offer {
     styleVariant: parsedConfig.styleVariant,
     actionType: parsedConfig.actionType,
     promoCode: parsedConfig.promoCode,
+    buttonText: parsedConfig.buttonText,
+    successMessage: parsedConfig.successMessage,
+    modalDelay: parsedConfig.modalDelay,
+    fontFamily: parsedConfig.fontFamily,
+    radius: parsedConfig.radius,
+    customCss: parsedConfig.customCss,
+    textColor: parsedConfig.textColor,
     targetUrl,
     whatsappNumber,
     startsAt: row.starts_at,
@@ -71,6 +78,13 @@ export async function createOffer(
     styleVariant?: string;
     actionType?: string;
     promoCode?: string;
+    buttonText?: string;
+    textColor?: string;
+    successMessage?: string;
+    modalDelay?: number;
+    fontFamily?: string;
+    radius?: string;
+    customCss?: string;
     targetUrl?: string;
     whatsappNumber?: string;
     startsAt?: string;
@@ -84,6 +98,13 @@ export async function createOffer(
     styleVariant: input.styleVariant,
     actionType: input.actionType,
     promoCode: input.promoCode,
+    buttonText: input.buttonText,
+    textColor: input.textColor,
+    successMessage: input.successMessage,
+    modalDelay: input.modalDelay,
+    fontFamily: input.fontFamily,
+    radius: input.radius,
+    customCss: input.customCss,
     targetUrl: input.targetUrl,
     whatsappNumber: input.whatsappNumber,
   });
@@ -117,8 +138,17 @@ export async function updateOffer(
     styleVariant?: string;
     actionType?: string;
     promoCode?: string;
+    buttonText?: string;
+    textColor?: string;
+    successMessage?: string;
+    modalDelay?: number;
+    fontFamily?: string;
+    radius?: string;
+    customCss?: string;
     targetUrl?: string;
     whatsappNumber?: string;
+    startsAt?: string | null;
+    endsAt?: string | null;
   }
 ): Promise<Offer | null> {
   const existingRows = await query<OfferRow>(
@@ -146,6 +176,13 @@ export async function updateOffer(
     styleVariant: input.styleVariant !== undefined ? input.styleVariant : existingConfig.styleVariant,
     actionType: input.actionType !== undefined ? input.actionType : existingConfig.actionType,
     promoCode: input.promoCode !== undefined ? input.promoCode : existingConfig.promoCode,
+    buttonText: input.buttonText !== undefined ? input.buttonText : existingConfig.buttonText,
+    textColor: input.textColor !== undefined ? input.textColor : existingConfig.textColor,
+    successMessage: input.successMessage !== undefined ? input.successMessage : existingConfig.successMessage,
+    modalDelay: input.modalDelay !== undefined ? input.modalDelay : existingConfig.modalDelay,
+    fontFamily: input.fontFamily !== undefined ? input.fontFamily : existingConfig.fontFamily,
+    radius: input.radius !== undefined ? input.radius : existingConfig.radius,
+    customCss: input.customCss !== undefined ? input.customCss : existingConfig.customCss,
     targetUrl: input.targetUrl !== undefined ? input.targetUrl : (existingConfig.targetUrl || existingConfig.linkUrl || existingConfig.redirectUrl),
     whatsappNumber: input.whatsappNumber !== undefined ? input.whatsappNumber : existingConfig.whatsappNumber,
   });
@@ -154,10 +191,22 @@ export async function updateOffer(
     `update offers
      set active = coalesce($3, active),
          title = coalesce($4, title),
-         body = $5
+         body = $5,
+         starts_at = case when $6::boolean then $7::timestamptz else starts_at end,
+         ends_at = case when $8::boolean then $9::timestamptz else ends_at end
      where id = $2 and tenant_id = $1
      returning *`,
-    [tenantId, offerId, input.active ?? null, input.title ?? null, updatedConfig]
+    [
+      tenantId,
+      offerId,
+      input.active ?? null,
+      input.title ?? null,
+      updatedConfig,
+      input.startsAt !== undefined,
+      input.startsAt ?? null,
+      input.endsAt !== undefined,
+      input.endsAt ?? null,
+    ]
   );
   return rows[0] ? toOffer(rows[0]) : null;
 }
@@ -185,6 +234,22 @@ export async function getActiveOfferForSiteKey(siteKey: string): Promise<Offer |
      order by o.created_at desc
      limit 1`,
     [siteKey]
+  );
+  return rows[0] ? toOffer(rows[0]) : null;
+}
+
+/** One specific live offer of the tenant that owns `siteKey` — what a pinned inline embed shows. */
+export async function getActiveOfferById(siteKey: string, offerId: string): Promise<Offer | null> {
+  const rows = await query<OfferRow>(
+    `select o.* from offers o
+     join sites s on s.tenant_id = o.tenant_id
+     where s.api_key = $1
+       and o.id = $2
+       and o.active = true
+       and (o.starts_at is null or o.starts_at <= now())
+       and (o.ends_at is null or o.ends_at >= now())
+     limit 1`,
+    [siteKey, offerId]
   );
   return rows[0] ? toOffer(rows[0]) : null;
 }

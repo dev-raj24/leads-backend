@@ -37,6 +37,7 @@ export async function completeText(opts: {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(25_000),
   }).catch((err) => {
     console.error("[gemini]", err instanceof Error ? err.message : err);
     throw new AppError(502, "ai_unavailable");

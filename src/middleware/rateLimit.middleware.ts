@@ -31,5 +31,10 @@ export const limits = {
     max: env.rateLimits.ingestMax,
     key: (req) => `${ipKeyGenerator(req.ip ?? "")}:${String(req.body?.site_key ?? req.body?.siteKey ?? "")}`,
   }),
+  chatPoll: createLimiter({
+    windowMs: MINUTE,
+    max: 60,
+    key: (req) => `${ipKeyGenerator(req.ip ?? "")}:${req.params.leadId ?? ""}`,
+  }),
   ai: createLimiter({ windowMs: MINUTE, max: env.rateLimits.aiMax, key: (req) => req.tenantId ?? ipKeyGenerator(req.ip ?? "") }),
 };

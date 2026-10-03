@@ -11,6 +11,8 @@ import { offerRoutes } from "./offer.routes";
 import { siteRoutes } from "./site.routes";
 import { statsRoutes } from "./stats.routes";
 import { tenantRoutes } from "./tenant.routes";
+import { widgetChatRoutes } from "./widget-chat.routes";
+import { widgetRoutes } from "./widget.routes";
 
 export const apiRoutes = Router();
 
@@ -25,3 +27,5 @@ apiRoutes.use(chatRoutes);
 apiRoutes.use(blogRoutes);
 apiRoutes.use(statsRoutes);
 apiRoutes.use(tenantRoutes);
+apiRoutes.use(widgetRoutes);
+apiRoutes.use(widgetChatRoutes);

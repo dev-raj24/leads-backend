@@ -32,6 +32,12 @@ export async function getPrimarySiteForTenant(tenantId: string): Promise<Site | 
   return rows[0] ? toSite(rows[0]) : null;
 }
 
+/** Resolve a site from its public api_key — how every public/embed endpoint identifies the tenant. */
+export async function getSiteByApiKey(apiKey: string): Promise<Site | null> {
+  const rows = await query<SiteRow>(`select * from sites where api_key = $1 limit 1`, [apiKey]);
+  return rows[0] ? toSite(rows[0]) : null;
+}
+
 export async function updateSiteSettings(
   tenantId: string,
   siteId: string,
