@@ -56,6 +56,7 @@ export async function replyToNewLead(tenantId: string, settings: Record<string, 
       const owners = await alertService.ownerEmails(tenantId);
       const result = await automatedMail.sendAutomatedToLead({
         tenantId,
+        leadId: lead.id,
         businessName: tenant.name,
         ownerEmail: owners[0],
         to: lead.contact,
@@ -71,6 +72,7 @@ export async function replyToNewLead(tenantId: string, settings: Record<string, 
     return reply;
   } catch (err) {
     console.error("[autoreply]", err);
+    await leadService.recordEvent(lead.id, "ai_reply_skipped", { reason: "ai_unavailable" }).catch(() => undefined);
     return null;
   }
 }

@@ -12,10 +12,9 @@ blogRoutes.get("/public/blog", blogController.publicList);
 blogRoutes.get("/public/blog/:slug", blogController.publicGet);
 
 // Owner-portal routes — require a signed-in session (JWT).
-// AI generation is a Pro feature — writing/editing/publishing drafts by hand stays on every plan.
 blogRoutes.post("/blog/generate", requireAuth, requirePro, limits.ai, blogController.generate);
 blogRoutes.get("/blog", requireAuth, blogController.list);
-blogRoutes.post("/blog", requireAuth, blogController.create);
+blogRoutes.post("/blog", requireAuth, requirePro, blogController.create);
 blogRoutes.get("/blog/:id", requireAuth, blogController.getOne);
-blogRoutes.patch("/blog/:id", requireAuth, blogController.update);
+blogRoutes.patch("/blog/:id", requireAuth, requirePro, blogController.update);
 blogRoutes.delete("/blog/:id", requireAuth, blogController.remove);

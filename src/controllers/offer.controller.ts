@@ -2,6 +2,7 @@
 
 import type { Request, Response } from "express";
 import * as offerService from "../services/offer.service";
+import { normalizeLeadFields } from "../services/site.service";
 import * as siteService from "../services/site.service";
 import { getTenant } from "../services/tenant.service";
 import { readChatDesign } from "../services/widget-design.service";
@@ -140,5 +141,7 @@ export const publicWidgetConfig = asyncHandler(async (req: Request, res: Respons
       enabled: tenant.plan === "pro" && site.settings?.widget === true,
       design: readChatDesign(site.settings?.widgetDesign),
     },
+    blog: { enabled: tenant.plan === "pro" },
+    form: { fields: normalizeLeadFields(site.settings?.leadFields) },
   });
 });

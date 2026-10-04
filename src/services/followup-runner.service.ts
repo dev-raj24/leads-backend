@@ -26,6 +26,7 @@ async function processOne(due: DueFollowup): Promise<void> {
   const result = mailer.isMailConfigured()
     ? await automatedMail.sendAutomatedToLead({
         tenantId: lead.tenantId,
+        leadId: lead.id,
         businessName: tenant.name,
         ownerEmail: owners[0],
         to: lead.contact,

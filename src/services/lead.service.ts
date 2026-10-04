@@ -4,7 +4,8 @@
 
 import { query } from "../config/db";
 import { normalizeContact } from "../utils/contact";
-import { InvalidSiteKeyError } from "../utils/errors";
+import { badRequest, InvalidSiteKeyError } from "../utils/errors";
+import { normalizeLeadFields } from "./site.service";
 import type { IngestLeadInput, Lead, LeadStatus } from "../types";
 
 interface SiteRow {
@@ -27,6 +28,12 @@ interface LeadRow {
   custom_fields: Record<string, unknown> | null;
   created_at: string;
   last_activity_at: string;
+  last_body?: string | null;
+  last_dir?: "inbound" | "outbound" | null;
+  last_ai?: boolean | null;
+  last_at?: string | null;
+  next_at?: string | null;
+  next_status?: string | null;
 }
 
 function toLead(row: LeadRow): Lead {
@@ -44,6 +51,12 @@ function toLead(row: LeadRow): Lead {
     customFields: row.custom_fields ?? undefined,
     createdAt: row.created_at,
     lastActivityAt: row.last_activity_at,
+    ...(row.last_dir !== undefined
+      ? {
+          lastMessage: row.last_dir ? { body: row.last_body ?? "", direction: row.last_dir, aiGenerated: row.last_ai === true, at: row.last_at! } : null,
+          nextFollowup: row.next_at ? { at: row.next_at, status: row.next_status ?? "pending" } : null,
+        }
+      : {}),
   };
 }
 
@@ -57,6 +70,21 @@ export interface IngestResult {
 
 const DUPLICATE_WINDOW_SECONDS = 60;
 
+function answersForConfiguredFields(settings: Record<string, unknown> | null, raw: Record<string, unknown>): Record<string, string> {
+  const answers: Record<string, string> = {};
+  for (const field of normalizeLeadFields(settings?.leadFields)) {
+    const given = raw[field.name];
+    const value = typeof given === "string" || typeof given === "number" ? String(given).trim().slice(0, 500) : "";
+    if (!value) {
+      if (field.required) throw badRequest("missing_field", `${field.name} is required.`);
+      continue;
+    }
+    if (field.options.length > 0 && !field.options.includes(value)) throw badRequest("invalid_field", `${field.name} has an invalid choice.`);
+    answers[field.name] = value;
+  }
+  return answers;
+}
+
 export async function createFromSite(input: IngestLeadInput & { qualified?: boolean }): Promise<IngestResult> {
   const sites = await query<SiteRow>(
     `select id, tenant_id, settings from sites where api_key = $1 limit 1`,
@@ -64,6 +92,8 @@ export async function createFromSite(input: IngestLeadInput & { qualified?: bool
   );
   const site = sites[0];
   if (!site) throw new InvalidSiteKeyError();
+
+  const customFields = input.fields ? answersForConfiguredFields(site.settings, input.fields) : input.customFields;
 
   const source = input.source ?? "form";
   const qualified = input.qualified ?? true;
@@ -94,7 +124,7 @@ export async function createFromSite(input: IngestLeadInput & { qualified?: bool
       input.message ?? null,
       source,
       qualified,
-      input.customFields ? JSON.stringify(input.customFields) : null,
+      customFields && Object.keys(customFields).length ? JSON.stringify(customFields) : null,
     ]
   );
   const lead = toLead(rows[0]);
@@ -162,16 +192,21 @@ export async function countLeadsByStatus(tenantId: string): Promise<Record<strin
   return Object.fromEntries(rows.map((r) => [r.status, Number(r.count)]));
 }
 
+const LIST_SELECT = `
+  select l.*, lm.body as last_body, lm.direction as last_dir, lm.ai_generated as last_ai, lm.created_at as last_at,
+         nf.run_at as next_at, nf.status as next_status
+  from leads l
+  left join lateral (
+    select body, direction, ai_generated, created_at from messages where lead_id = l.id order by created_at desc limit 1
+  ) lm on true
+  left join lateral (
+    select run_at, status from followups where lead_id = l.id and status in ('pending', 'approved', 'manual', 'processing') order by run_at asc limit 1
+  ) nf on true`;
+
 export async function getLeadsForTenant(tenantId: string, status?: LeadStatus): Promise<Lead[]> {
   const rows = status
-    ? await query<LeadRow>(
-        `select * from leads where tenant_id = $1 and qualified = true and status = $2 order by created_at desc`,
-        [tenantId, status]
-      )
-    : await query<LeadRow>(
-        `select * from leads where tenant_id = $1 and qualified = true order by created_at desc`,
-        [tenantId]
-      );
+    ? await query<LeadRow>(`${LIST_SELECT} where l.tenant_id = $1 and l.qualified = true and l.status = $2 order by l.created_at desc`, [tenantId, status])
+    : await query<LeadRow>(`${LIST_SELECT} where l.tenant_id = $1 and l.qualified = true order by l.created_at desc`, [tenantId]);
   return rows.map(toLead);
 }
 

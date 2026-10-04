@@ -36,6 +36,8 @@ export const env = {
   mailFrom: process.env.MAIL_FROM ?? "Leadworks <no-reply@leadworks.local>",
   appUrl: process.env.APP_URL ?? "http://localhost:3000",
   publicApiUrl: (process.env.PUBLIC_API_URL ?? `http://localhost:${process.env.PORT ?? 4001}`).replace(/\/$/, ""),
+  inboundEmailDomain: (process.env.INBOUND_EMAIL_DOMAIN ?? "").trim().toLowerCase(),
+  inboundEmailSecret: process.env.INBOUND_EMAIL_SECRET ?? "",
   quietHours: process.env.QUIET_HOURS !== "off" && nodeEnv !== "test",
   razorpay: {
     keyId: process.env.RAZORPAY_KEY_ID ?? "",

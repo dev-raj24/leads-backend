@@ -59,3 +59,9 @@ export async function notifyOwnerOfNewChat(tenantId: string, settings: Record<st
 
   return deliver(tenantId, lead.id, `New chat on your website`, text, "chat");
 }
+
+export async function notifyOwnerOfCustomerReply(tenantId: string, lead: Lead, body: string): Promise<boolean> {
+  const who = lead.name ?? lead.contact;
+  const text = [`${who} replied to your email.`, "", clip(body, 500), "", `Reply in Leadworks: ${env.appUrl}/leads/${lead.id}`].join("\n");
+  return deliver(tenantId, lead.id, `${who} replied`, text, "reply");
+}

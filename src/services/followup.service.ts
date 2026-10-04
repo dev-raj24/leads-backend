@@ -44,6 +44,14 @@ export async function getFollowupsForTenant(tenantId: string): Promise<Followup[
   return rows.map(toFollowup);
 }
 
+export async function getFollowupsForLead(tenantId: string, leadId: string): Promise<Followup[]> {
+  const rows = await query<FollowupRow>(
+    `${SELECT} where l.tenant_id = $1 and f.lead_id = $2 order by f.run_at asc`,
+    [tenantId, leadId]
+  );
+  return rows.map(toFollowup);
+}
+
 export async function getFollowupById(tenantId: string, id: string): Promise<Followup> {
   const rows = await query<FollowupRow>(`${SELECT} where f.id = $2 and l.tenant_id = $1`, [tenantId, id]);
   if (!rows[0]) throw notFound();

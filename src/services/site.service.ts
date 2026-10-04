@@ -122,3 +122,28 @@ export async function getInstallStatus(tenantId: string, siteId: string): Promis
     blocked: blocked.map((b) => ({ host: b.host, kind: b.kind, lastAt: b.last_at, count: b.count })),
   };
 }
+
+export interface LeadField {
+  name: string;
+  required: boolean;
+  options: string[];
+}
+
+export function normalizeLeadFields(raw: unknown): LeadField[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: LeadField[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const r = item as Record<string, unknown>;
+    const name = typeof r.name === "string" ? r.name.trim().slice(0, 40) : "";
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    const options = Array.isArray(r.options)
+      ? Array.from(new Set(r.options.filter((o): o is string => typeof o === "string").map((o) => o.trim().slice(0, 40)).filter(Boolean))).slice(0, 12)
+      : [];
+    out.push({ name, required: r.required === true, options });
+    if (out.length >= 12) break;
+  }
+  return out;
+}

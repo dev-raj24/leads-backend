@@ -20,7 +20,16 @@ const isPublicPath = (path: string) => path.startsWith("/api/public/") || path =
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use((req, res, next) => (isPublicPath(req.path) ? openCors : privateCors)(req, res, next));
-app.use(express.json({ limit: "1mb", verify: (req, _res, buf) => ((req as express.Request).rawBody = buf) }));
+const keepRawBody = (req: unknown, _res: unknown, buf: Buffer) => {
+  (req as express.Request).rawBody = buf;
+};
+app.use("/api/public/inbound-email", express.json({ limit: "1mb", verify: keepRawBody }));
+app.use(["/api/public", "/api/ingest"], express.json({ limit: "32kb", verify: keepRawBody }));
+app.use(express.json({ limit: "1mb", verify: keepRawBody }));
+app.use("/api", (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
 app.use(["/api/public", "/api/ingest"], siteGuard);
 
 app.get("/health", (_req, res) => res.json({ ok: true, service: "leadworks-api" }));

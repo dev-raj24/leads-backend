@@ -43,3 +43,5 @@ Optional: `GEMINI_API_KEY` enables AI replies, chat and blog drafts. `SMTP_URL` 
 - Background jobs: run `JOBS=off yarn start` for the web process and `yarn start:worker` as a second process, so a web restart never delays follow-ups.
 - Follow-ups are only sent between 9 AM and 8 PM in the site's timezone (`settings.timezone`, default Asia/Kolkata). Set `QUIET_HOURS=off` to disable this.
 - Rotate `SMTP_URL`, `GEMINI_API_KEY` and `JWT_SECRET` if they were ever pasted into a chat, ticket or screenshot.
+- Replies in the portal: set `INBOUND_EMAIL_DOMAIN` (a subdomain such as `inbound.yourdomain.com` whose MX records point to a provider that can forward incoming mail as JSON) and `INBOUND_EMAIL_SECRET`. Configure the provider to POST each incoming message to `/api/public/inbound-email` with the header `x-inbound-secret`. Postmark inbound, Resend inbound and a plain `{from, to, subject, text}` JSON body are understood. Without these two values, answers go to the owner's own inbox instead of the lead's thread.
+- Sessions: every password change or "log out everywhere" revokes older tokens. Eight wrong passwords for one email lock that login for 15 minutes.

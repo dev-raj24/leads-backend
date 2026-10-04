@@ -195,6 +195,7 @@ export async function getPublishedPostsForSiteKey(siteKey: string): Promise<Blog
   const rows = await query<BlogPostRow>(
     `select bp.* from blog_posts bp
      join sites s on s.id = bp.site_id
+     join tenants t on t.id = bp.tenant_id and t.plan = 'pro'
      where s.api_key = $1 and bp.status = 'published'
      order by bp.published_at desc`,
     [siteKey]
@@ -209,6 +210,7 @@ export async function getPublishedPostBySlug(
   const rows = await query<BlogPostRow>(
     `select bp.* from blog_posts bp
      join sites s on s.id = bp.site_id
+     join tenants t on t.id = bp.tenant_id and t.plan = 'pro'
      where s.api_key = $1 and bp.slug = $2 and bp.status = 'published'
      limit 1`,
     [siteKey, slug]

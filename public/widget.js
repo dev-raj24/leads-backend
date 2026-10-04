@@ -88,7 +88,13 @@
     ".lw-blog-back{display:inline-block;margin-bottom:16px;padding:0;background:none;border:0;color:var(--lw-accent);font-size:14px;cursor:pointer}" +
     ".lw-blog-h1{margin:0 0 4px;font-size:28px;line-height:1.25}" +
     ".lw-blog-content{white-space:pre-wrap}" +
-    ".lw-blog-empty{opacity:.7}";
+    ".lw-blog-empty{opacity:.7}" +
+    ".lw-formcard{display:grid;gap:12px;max-width:460px;font-size:15px;line-height:1.4}" +
+    ".lw-formcard h3{margin:0;font-size:20px}" +
+    ".lw-formcard label{display:grid;gap:4px;font-size:13px;font-weight:600}" +
+    ".lw-formcard textarea.lw-input{min-height:84px;resize:vertical;font:inherit}" +
+    ".lw-formcard .lw-input{font-weight:400}" +
+    ".lw-formcard select.lw-input{font:inherit;font-weight:400}";
 
   // ------------------------------------------------------------------ helpers
   function el(tag, cls, text) {
@@ -290,10 +296,13 @@
 
   var activeOffer = null;
   var configReady = false;
+  var blogEnabled = false;
 
   function scan() {
-    if (configReady) mountInline(activeOffer);
-    mountBlog();
+    if (!configReady) return;
+    mountInline(activeOffer);
+    mountForm();
+    if (blogEnabled) mountBlog();
   }
 
   // Sites built with React, Wix or Webflow add our placeholders after the page has loaded.
@@ -315,6 +324,8 @@
           : "right"
         : null;
       activeOffer = data.offer || null;
+      blogEnabled = !!(data.blog && data.blog.enabled);
+      formConfig = data.form || { fields: [] };
       if (data.offer) showOffer(data.offer, chatSide);
       if (chatOn) renderChat(data.chat.design || {}, false);
       configReady = true;
@@ -324,10 +335,7 @@
       console.error("[leadworks] widget-config failed:", err.message);
     });
 
-  whenReady(function () {
-    mountBlog();
-    watchDom();
-  });
+  whenReady(watchDom);
 
   function whenReady(fn) {
     if (document.readyState === "loading")
@@ -796,6 +804,122 @@
     }
 
     if (preview) openPanel();
+  }
+
+  // ------------------------------------------------------------------ form
+  // <div data-leadworks-form></div> — the enquiry form, with the fields the owner chose in Settings.
+  var formConfig = { fields: [] };
+
+  function mountForm() {
+    var nodes = document.querySelectorAll("[data-leadworks-form]");
+    Array.prototype.forEach.call(nodes, function (node) {
+      if (node.hasAttribute("data-leadworks-mounted")) return;
+      node.setAttribute("data-leadworks-mounted", "");
+      var m = mount(node, { fontFamily: "inherit" }, "");
+      var accent = resolveBrand("auto");
+      m.root.style.setProperty("--lw-accent", accent);
+      m.root.style.setProperty("--lw-on-accent", readableOn(accent));
+      m.root.classList.add("lw-inherit-font");
+      drawForm(m.root, node);
+    });
+  }
+
+  function drawForm(root, node) {
+    var form = el("form", "lw-formcard");
+    var title = node.getAttribute("data-title");
+    if (title) form.appendChild(el("h3", "", title));
+
+    function field(labelText, control) {
+      var label = el("label", "", labelText);
+      label.appendChild(control);
+      form.appendChild(label);
+      return control;
+    }
+
+    var name = field("Your name", el("input", "lw-input"));
+    name.autocomplete = "name";
+    var contact = field("Phone number or email", el("input", "lw-input"));
+    contact.autocomplete = "email";
+    contact.required = true;
+
+    var extras = [];
+    (formConfig.fields || []).forEach(function (f) {
+      var control;
+      if (f.options && f.options.length) {
+        control = el("select", "lw-input");
+        var blank = el("option", "", "Choose one");
+        blank.value = "";
+        control.appendChild(blank);
+        f.options.forEach(function (o) {
+          var opt = el("option", "", o);
+          opt.value = o;
+          control.appendChild(opt);
+        });
+      } else {
+        control = el("input", "lw-input");
+      }
+      field(f.name + (f.required ? " *" : ""), control);
+      extras.push({ field: f, control: control });
+    });
+
+    var message = field("Message", el("textarea", "lw-input"));
+    var trap = el("input");
+    trap.name = "website";
+    trap.tabIndex = -1;
+    trap.setAttribute("autocomplete", "off");
+    trap.style.cssText = "position:absolute;left:-9999px;opacity:0;height:0;width:0";
+    var error = el("div", "lw-error");
+    var submit = el("button", "lw-submit", node.getAttribute("data-button") || "Send enquiry");
+    submit.type = "submit";
+    [trap, error, submit].forEach(function (n) {
+      form.appendChild(n);
+    });
+    root.appendChild(form);
+
+    form.onsubmit = function (e) {
+      e.preventDefault();
+      error.textContent = "";
+      var c = contact.value.trim();
+      if (!validContact(c)) {
+        error.textContent = "Please enter a valid phone number or email.";
+        return;
+      }
+      var fields = {};
+      for (var i = 0; i < extras.length; i++) {
+        var v = extras[i].control.value.trim();
+        if (!v && extras[i].field.required) {
+          error.textContent = "Please fill in " + extras[i].field.name + ".";
+          return;
+        }
+        if (v) fields[extras[i].field.name] = v;
+      }
+      submit.disabled = true;
+      submit.textContent = "Sending\u2026";
+      post("/api/ingest/lead", {
+        site_key: SITE_KEY,
+        name: name.value.trim(),
+        contact: c,
+        message: message.value.trim(),
+        fields: fields,
+        website: trap.value,
+        source: "form",
+        wait: false,
+      })
+        .then(function () {
+          root.innerHTML = "";
+          var ok = el("div", "lw-success");
+          ok.appendChild(el("div", "lw-success-title", "Thank you!"));
+          ok.appendChild(
+            el("div", "lw-success-text", node.getAttribute("data-success") || "We got your message and will reply very soon."),
+          );
+          root.appendChild(ok);
+        })
+        .catch(function () {
+          error.textContent = "Something went wrong. Please try again.";
+          submit.disabled = false;
+          submit.textContent = node.getAttribute("data-button") || "Send enquiry";
+        });
+    };
   }
 
   // ------------------------------------------------------------------ blog

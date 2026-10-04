@@ -54,3 +54,11 @@ export async function countAiRepliesSince(tenantId: string, since: Date): Promis
   );
   return Number(rows[0]?.count ?? 0);
 }
+
+export async function countInboundEmailSince(leadId: string, since: Date): Promise<number> {
+  const rows = await query<{ count: string }>(
+    `select count(*)::text as count from messages where lead_id = $1 and direction = 'inbound' and channel = 'email' and created_at >= $2`,
+    [leadId, since.toISOString()]
+  );
+  return Number(rows[0]?.count ?? 0);
+}

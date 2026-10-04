@@ -15,3 +15,4 @@ authRoutes.patch("/auth/email", requireAuth, limits.auth, authController.changeE
 authRoutes.post("/auth/verify-email", limits.auth, authController.verifyEmail);
 authRoutes.post("/auth/resend-verification", requireAuth, limits.auth, authController.resendVerification);
 authRoutes.get("/auth/me", requireAuth, authController.me);
+authRoutes.post("/auth/logout-all", requireAuth, limits.auth, authController.logoutAll);

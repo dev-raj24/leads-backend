@@ -7,6 +7,7 @@ export type AutomatedSkip = "unsubscribed" | "automated_address" | "invalid_addr
 /** Mail the system sends to a lead without a human pressing send: carries a stop link, honours opt-outs. */
 export async function sendAutomatedToLead(input: {
   tenantId: string;
+  leadId: string;
   businessName: string;
   ownerEmail?: string;
   to: string;
@@ -23,7 +24,7 @@ export async function sendAutomatedToLead(input: {
     to: input.to,
     subject: input.subject,
     text,
-    replyTo: input.ownerEmail,
+    replyTo: mailer.replyAddressFor(input.leadId, input.ownerEmail),
     fromName: input.businessName,
     headers: { "List-Unsubscribe": `<${url}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
   });

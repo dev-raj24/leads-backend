@@ -2,7 +2,11 @@
 // Rule: NO SQL here. Calls services; errors flow to error.middleware.
 
 import type { Request, Response } from "express";
+import { env } from "../config/env";
 import * as aiService from "../services/ai.service";
+import * as alertService from "../services/alert.service";
+import { getTenant } from "../services/tenant.service";
+import * as followupService from "../services/followup.service";
 import * as leadIntake from "../services/lead-intake.service";
 import * as leadService from "../services/lead.service";
 import * as messageService from "../services/message.service";
@@ -40,10 +44,11 @@ export const ingest = asyncHandler(async (req: Request, res: Response) => {
     name: limitLength(optionalString(body.name), 120, "name_too_long"),
     message: limitLength(optionalString(body.message), 2000, "message_too_long"),
     source: isIngestSource(body.source) ? body.source : undefined,
+    fields: body.fields && typeof body.fields === "object" && !Array.isArray(body.fields) ? body.fields : undefined,
   });
   if (duplicate) return res.status(201).json({ ok: true, id: lead.id, reply: null, duplicate: true });
 
-  const { reply } = await leadIntake.afterNewLead(tenantId, siteSettings, lead);
+  const { reply } = await leadIntake.afterNewLead(tenantId, siteSettings, lead, { awaitReply: body.wait !== false });
   res.status(201).json({ ok: true, id: lead.id, reply });
 });
 
@@ -60,11 +65,12 @@ export const list = asyncHandler(async (req: Request, res: Response) => {
 export const getOne = asyncHandler(async (req: Request, res: Response) => {
   const lead = await leadService.getLeadById(req.tenantId!, req.params.id);
   if (!lead) throw notFound();
-  const [messages, events] = await Promise.all([
+  const [messages, events, followups] = await Promise.all([
     messageService.getMessagesForLead(req.tenantId!, lead.id),
     leadService.getEventsForLead(req.tenantId!, lead.id),
+    followupService.getFollowupsForLead(req.tenantId!, lead.id),
   ]);
-  res.json({ lead, messages, events });
+  res.json({ lead, messages, events, followups, replyInPortal: Boolean(env.inboundEmailDomain && env.inboundEmailSecret) });
 });
 
 /** PATCH /api/leads/:id — { status } */
@@ -148,7 +154,14 @@ export const sendReply = asyncHandler(async (req: Request, res: Response) => {
   if (!mailer.looksLikeEmail(lead.contact)) throw badRequest("no_email_on_file");
   if (!mailer.isMailConfigured()) throw badRequest("mail_not_configured");
 
-  const sent = await mailer.sendMail({ to: lead.contact, subject: "Re: your enquiry", text: body });
+  const [tenant, owners] = await Promise.all([getTenant(req.tenantId!), alertService.ownerEmails(req.tenantId!)]);
+  const sent = await mailer.sendMail({
+    to: lead.contact,
+    subject: "Re: your enquiry",
+    text: body,
+    fromName: tenant.name,
+    replyTo: mailer.replyAddressFor(lead.id, owners[0]),
+  });
   if (!sent) throw badRequest("send_failed");
 
   await messageService.addMessage(lead.id, { channel: "email", direction: "outbound", body, aiGenerated: false });

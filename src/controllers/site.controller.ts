@@ -28,6 +28,7 @@ export const updateSettings = asyncHandler(async (req: Request, res: Response) =
     if (tenant.plan !== "pro") settings.autofollow = false;
   }
 
+  if ("leadFields" in settings) settings.leadFields = siteService.normalizeLeadFields(settings.leadFields);
   if ("allowedDomains" in settings) settings.allowedDomains = siteService.normalizeDomainList(settings.allowedDomains);
 
   const site = await siteService.updateSiteSettings(req.tenantId!, req.params.id, settings);

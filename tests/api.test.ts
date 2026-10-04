@@ -174,7 +174,7 @@ describe("offers and widget config", () => {
 
 describe("blog", () => {
   it("publishes posts to the public embed and hides drafts", async () => {
-    const { token, siteKey } = await api.signup("blog");
+    const { token, siteKey } = await api.signup("blog", { plan: "pro" });
 
     const draft = await api.call("POST", "/api/blog", { token, body: { title: "Draft post", content: "wip" } });
     assert.equal(draft.body.post.status, "draft");

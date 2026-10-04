@@ -73,3 +73,20 @@ export async function isUnsubscribed(tenantId: string, contact: string): Promise
 export async function unsubscribe(tenantId: string, contactKey: string): Promise<void> {
   await query(`insert into unsubscribes (tenant_id, contact_key) values ($1, $2) on conflict do nothing`, [tenantId, contactKey]);
 }
+
+const replySig = (leadId: string) => createHmac("sha256", env.jwtSecret).update(`reply:${leadId}`).digest("hex").slice(0, 16);
+
+/** Where a lead's answer should go: back into the portal when an inbound domain is set, otherwise to the owner's own inbox. */
+export function replyAddressFor(leadId: string, fallback?: string): string | undefined {
+  if (!env.inboundEmailDomain) return fallback;
+  return `reply+${leadId}.${replySig(leadId)}@${env.inboundEmailDomain}`;
+}
+
+export function leadIdFromReplyAddress(address: string): string | null {
+  const m = /reply\+([0-9a-f-]{36})\.([0-9a-f]{16})@([^\s>]+)/i.exec(address);
+  if (!m || m[3].toLowerCase() !== env.inboundEmailDomain) return null;
+  const expected = Buffer.from(replySig(m[1].toLowerCase()));
+  const given = Buffer.from(m[2].toLowerCase());
+  if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
+  return m[1].toLowerCase();
+}

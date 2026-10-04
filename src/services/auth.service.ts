@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { randomBytes, createHash } from "crypto";
 import { env } from "../config/env";
 import { pool, query } from "../config/db";
-import { badRequest, DatabaseNotConfiguredError, EmailInUseError, InvalidCredentialsError, InvalidResetTokenError } from "../utils/errors";
+import { AppError, badRequest, DatabaseNotConfiguredError, EmailInUseError, InvalidCredentialsError, InvalidResetTokenError } from "../utils/errors";
 import * as mailer from "./mailer.service";
 import { toSite, type SiteRow } from "./site.service";
 import { getTenant } from "./tenant.service";
@@ -15,6 +15,27 @@ interface UserRow {
   password_hash: string;
   role: string;
   email_verified_at: string | null;
+}
+
+const MAX_FAILED_LOGINS = 8;
+const LOCK_WINDOW_MS = 15 * 60 * 1000;
+const failedLogins = new Map<string, { count: number; first: number }>();
+
+function assertNotLocked(email: string) {
+  const entry = failedLogins.get(email);
+  if (!entry) return;
+  if (Date.now() - entry.first > LOCK_WINDOW_MS) {
+    failedLogins.delete(email);
+    return;
+  }
+  if (entry.count >= MAX_FAILED_LOGINS) throw new AppError(429, "too_many_attempts");
+}
+
+function noteFailedLogin(email: string) {
+  const entry = failedLogins.get(email);
+  if (!entry || Date.now() - entry.first > LOCK_WINDOW_MS) failedLogins.set(email, { count: 1, first: Date.now() });
+  else entry.count += 1;
+  if (failedLogins.size > 10_000) failedLogins.clear();
 }
 
 const DUMMY_HASH = bcrypt.hashSync("leadworks-dummy-password", env.bcryptRounds);
@@ -84,12 +105,17 @@ export async function signup(
 }
 
 export async function login(input: LoginInput): Promise<{ user: AuthUser; tenant: Tenant }> {
+  assertNotLocked(input.email);
   const rows = await query<UserRow>(`select * from users where email = $1 limit 1`, [
     input.email,
   ]);
   const row = rows[0];
   const ok = await bcrypt.compare(input.password, row?.password_hash ?? DUMMY_HASH);
-  if (!row || !ok) throw new InvalidCredentialsError();
+  if (!row || !ok) {
+    noteFailedLogin(input.email);
+    throw new InvalidCredentialsError();
+  }
+  failedLogins.delete(input.email);
 
   return { user: toAuthUser(row), tenant: await getTenant(row.tenant_id) };
 }
@@ -189,7 +215,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
 
   const passwordHash = await bcrypt.hash(newPassword, env.bcryptRounds);
   await query(
-    `update users set password_hash = $2, reset_token_hash = null, reset_token_expires_at = null where id = $1`,
+    `update users set password_hash = $2, reset_token_hash = null, reset_token_expires_at = null, token_version = token_version + 1 where id = $1`,
     [user.id, passwordHash]
   );
 }

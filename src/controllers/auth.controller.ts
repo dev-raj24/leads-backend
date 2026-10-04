@@ -4,6 +4,8 @@
 import type { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env";
+import { currentTokenVersion, revokeAllSessions } from "../services/session.service";
+import { isWeakPassword } from "../utils/password";
 import * as authService from "../services/auth.service";
 import type { AuthUser } from "../types";
 import { asyncHandler } from "../utils/asyncHandler";
@@ -12,8 +14,12 @@ import { isNonEmptyString, limitLength, optionalString } from "../utils/validate
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function issueToken(user: AuthUser): string {
-  return jwt.sign({ tenantId: user.tenantId, userId: user.id }, env.jwtSecret, { expiresIn: env.jwtExpiresIn as jwt.SignOptions["expiresIn"] });
+async function issueToken(user: AuthUser): Promise<string> {
+  const tv = (await currentTokenVersion(user.id, user.tenantId)) ?? 0;
+  return jwt.sign({ tenantId: user.tenantId, userId: user.id, tv }, env.jwtSecret, {
+    algorithm: "HS256",
+    expiresIn: env.jwtExpiresIn as jwt.SignOptions["expiresIn"],
+  });
 }
 
 /** POST /api/auth/signup — { businessName, email, password, servicesInfo? } */
@@ -23,7 +29,7 @@ export const signup = asyncHandler(async (req: Request, res: Response) => {
   if (!isNonEmptyString(businessName)) throw badRequest("missing_business_name");
   limitLength(businessName, 120, "business_name_too_long");
   if (!isNonEmptyString(email) || email.length > 254 || !EMAIL_RE.test(email.trim())) throw badRequest("invalid_email");
-  if (typeof password !== "string" || password.length < 8 || password.length > 72) throw badRequest("weak_password");
+  if (typeof password !== "string" || isWeakPassword(password, email.trim())) throw badRequest("weak_password");
 
   const { user, site, tenant } = await authService.signup({
     businessName: businessName.trim(),
@@ -31,7 +37,7 @@ export const signup = asyncHandler(async (req: Request, res: Response) => {
     password,
     servicesInfo: limitLength(optionalString(servicesInfo), 5000, "services_info_too_long"),
   });
-  res.status(201).json({ token: issueToken(user), user, site, tenant });
+  res.status(201).json({ token: await issueToken(user), user, site, tenant });
 });
 
 /** POST /api/auth/login — { email, password } */
@@ -41,7 +47,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   if (email.length > 254 || password.length > 72) throw badRequest("invalid_credentials");
 
   const { user, tenant } = await authService.login({ email: email.trim().toLowerCase(), password });
-  res.json({ token: issueToken(user), user, tenant });
+  res.json({ token: await issueToken(user), user, tenant });
 });
 
 /** POST /api/auth/forgot-password — { email } — always 200, never reveals whether the email exists. */
@@ -57,7 +63,7 @@ export const forgotPassword = asyncHandler(async (req: Request, res: Response) =
 export const resetPassword = asyncHandler(async (req: Request, res: Response) => {
   const { token, password } = req.body ?? {};
   if (!isNonEmptyString(token)) throw badRequest("missing_token");
-  if (typeof password !== "string" || password.length < 8 || password.length > 72) throw badRequest("weak_password");
+  if (typeof password !== "string" || isWeakPassword(password)) throw badRequest("weak_password");
 
   await authService.resetPassword(token, password);
   res.json({ ok: true });
@@ -67,10 +73,12 @@ export const resetPassword = asyncHandler(async (req: Request, res: Response) =>
 export const changePassword = asyncHandler(async (req: Request, res: Response) => {
   const { currentPassword, newPassword } = req.body ?? {};
   if (!isNonEmptyString(currentPassword)) throw badRequest("missing_current_password");
-  if (typeof newPassword !== "string" || newPassword.length < 8 || newPassword.length > 72) throw badRequest("weak_password");
+  if (typeof newPassword !== "string" || isWeakPassword(newPassword)) throw badRequest("weak_password");
 
   await authService.changePassword(req.userId!, currentPassword, newPassword);
-  res.json({ ok: true });
+  await revokeAllSessions(req.userId!);
+  const found = await authService.getUser(req.userId!);
+  res.json({ ok: true, token: found ? await issueToken(found.user) : undefined });
 });
 
 /** PATCH /api/auth/email — { newEmail, currentPassword } (signed in) */
@@ -101,4 +109,12 @@ export const me = asyncHandler(async (req: Request, res: Response) => {
   const found = await authService.getUser(req.userId!);
   if (!found) return res.status(401).json({ error: "invalid_token" });
   res.json(found);
+});
+
+/** POST /api/auth/logout-all (signed in) — signs every other device out, keeps this one. */
+export const logoutAll = asyncHandler(async (req: Request, res: Response) => {
+  await revokeAllSessions(req.userId!);
+  const found = await authService.getUser(req.userId!);
+  if (!found) return res.status(401).json({ error: "invalid_token" });
+  res.json({ ok: true, token: await issueToken(found.user) });
 });
