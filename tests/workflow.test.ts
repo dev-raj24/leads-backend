@@ -143,6 +143,23 @@ describe("lead list and forms", () => {
     assert.deepEqual(lead.customFields, { Service: "Braces", Budget: "20000" });
   });
 
+  it("stores the extra answers captured from a site's own form, minus anything sensitive", async () => {
+    const { token, siteKey } = await api.signup("extras");
+    const res = await ingest(siteKey, {
+      contact: "own@x.co",
+      message: "from my own form",
+      extras: { "PHONE NUMBER": "+1 555 123 4567", Company: "NRG", password: "hunter2", "Card number": "4111", Service: "LTL" },
+    });
+    assert.equal(res.status, 201);
+    const lead = (await api.call("GET", "/api/leads", { token })).body.leads[0];
+    assert.deepEqual(lead.customFields, { "PHONE NUMBER": "+1 555 123 4567", Company: "NRG", Service: "LTL" });
+
+    const many = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`q${i}`, "v"]));
+    await ingest(siteKey, { contact: "own2@x.co", message: "many", extras: many });
+    const second = (await api.call("GET", "/api/leads", { token })).body.leads.find((l: any) => l.contact === "own2@x.co");
+    assert.equal(Object.keys(second.customFields).length, 12);
+  });
+
   it("keeps chat and blog for paying accounts only, while forms stay free", async () => {
     const { token, siteKey } = await api.signup("gate");
     const blocked = await api.call("POST", "/api/blog", { token, body: { title: "Nope", content: "x" } });

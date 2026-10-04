@@ -70,6 +70,20 @@ export interface IngestResult {
 
 const DUPLICATE_WINDOW_SECONDS = 60;
 
+const SENSITIVE_KEY = /pass(word)?|card|cvv|cvc|ssn|aadhaar|pan\b|otp|token|secret|iban/i;
+
+function sanitizeExtras(raw: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    const k = key.trim().slice(0, 40);
+    if (!k || SENSITIVE_KEY.test(k) || (typeof value !== "string" && typeof value !== "number")) continue;
+    const v = String(value).trim().slice(0, 500);
+    if (v) out[k] = v;
+    if (Object.keys(out).length >= 12) break;
+  }
+  return out;
+}
+
 function answersForConfiguredFields(settings: Record<string, unknown> | null, raw: Record<string, unknown>): Record<string, string> {
   const answers: Record<string, string> = {};
   for (const field of normalizeLeadFields(settings?.leadFields)) {
@@ -93,7 +107,9 @@ export async function createFromSite(input: IngestLeadInput & { qualified?: bool
   const site = sites[0];
   if (!site) throw new InvalidSiteKeyError();
 
-  const customFields = input.fields ? answersForConfiguredFields(site.settings, input.fields) : input.customFields;
+  const configured = input.fields ? answersForConfiguredFields(site.settings, input.fields) : input.customFields;
+  const extras = input.extras ? sanitizeExtras(input.extras) : {};
+  const customFields = configured || Object.keys(extras).length ? { ...extras, ...(configured ?? {}) } : undefined;
 
   const source = input.source ?? "form";
   const qualified = input.qualified ?? true;

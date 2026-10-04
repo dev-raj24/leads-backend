@@ -922,6 +922,106 @@
     };
   }
 
+  // ------------------------------------------------------------------ capture an existing form
+  // <form data-leadworks-capture> — the site keeps its own form and design; we read it on submit and send it to the inbox.
+  var NAME_KEY = /(^|\b)(full\s*)?(first\s*)?name\b/i;
+  var NOT_PERSON = /company|business|organi[sz]ation|user\s*name|file|product/i;
+  var MESSAGE_KEY = /message|details|comment|note|enquiry|inquiry|requirement|question|about/i;
+  var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  function fieldLabel(input) {
+    var text = "";
+    if (input.labels && input.labels[0]) text = input.labels[0].textContent;
+    else if (input.id) {
+      var forLabel = document.querySelector('label[for="' + input.id.replace(/"/g, "") + '"]');
+      if (forLabel) text = forLabel.textContent;
+    }
+    if (!text) {
+      var wrap = input.closest ? input.closest("label") : null;
+      if (wrap) text = wrap.textContent;
+    }
+    if (!text) {
+      var prev = input.previousElementSibling;
+      if (prev && prev.tagName === "LABEL") text = prev.textContent;
+    }
+    if (!text && input.parentElement) {
+      var near = input.parentElement.querySelector("label");
+      if (near) text = near.textContent;
+    }
+    text = (text || input.getAttribute("aria-label") || input.name || input.placeholder || input.id || "")
+      .replace(/[*:]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return text.slice(0, 40);
+  }
+
+  function readForm(form) {
+    var items = [];
+    Array.prototype.forEach.call(form.elements, function (input) {
+      var type = (input.type || "").toLowerCase();
+      if (!input.tagName || /^(button|submit|reset|image|file|hidden|password|checkbox|radio)$/.test(type)) {
+        if (!((type === "checkbox" || type === "radio") && input.checked)) return;
+      }
+      if (input.tagName === "FIELDSET" || input.disabled) return;
+      var value = (input.value || "").trim();
+      if (!value || /^select\b|^choose\b/i.test(value)) return;
+      items.push({ input: input, type: type, label: fieldLabel(input) || "Field", value: value });
+    });
+
+    var used = {};
+    function take(pred) {
+      for (var i = 0; i < items.length; i++) {
+        if (!used[i] && pred(items[i])) {
+          used[i] = true;
+          return items[i];
+        }
+      }
+      return null;
+    }
+    var contact =
+      take(function (f) { return f.type === "email" || EMAIL_RE.test(f.value); }) ||
+      take(function (f) { return f.type === "tel" || (!/[a-z]{3,}/i.test(f.value) && f.value.replace(/\D/g, "").length >= 7); });
+    var person = take(function (f) { return f.type === "text" && NAME_KEY.test(f.label) && !NOT_PERSON.test(f.label); });
+    var message =
+      take(function (f) { return f.input.tagName === "TEXTAREA"; }) ||
+      take(function (f) { return MESSAGE_KEY.test(f.label) && f.value.length > 20; });
+
+    var extras = {};
+    items.forEach(function (f, i) {
+      if (!used[i]) extras[f.label] = f.value;
+    });
+    return {
+      contact: contact ? contact.value : "",
+      name: person ? person.value : "",
+      message: message ? message.value : "",
+      extras: extras,
+    };
+  }
+
+  function onFormSubmit(e) {
+    var form = e.target;
+    if (PREVIEW || !form || !form.hasAttribute || !form.hasAttribute("data-leadworks-capture")) return;
+    if (form.querySelector("input[type=password]")) return;
+    var data = readForm(form);
+    if (!validContact(data.contact)) return;
+    fetch(API + "/api/ingest/lead", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      keepalive: true,
+      body: JSON.stringify({
+        site_key: SITE_KEY,
+        name: data.name,
+        contact: data.contact,
+        message: data.message,
+        extras: data.extras,
+        source: "form",
+        wait: false,
+      }),
+    }).catch(function () {});
+  }
+
+  document.addEventListener("submit", onFormSubmit, true);
+
   // ------------------------------------------------------------------ blog
   // <div data-leadworks-blog></div> (or id="leadworks-blog") — post list; clicking a post shows it in place (?lw_post=slug).
   var BLOG_PARAM = "lw_post";

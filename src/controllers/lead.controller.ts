@@ -45,6 +45,7 @@ export const ingest = asyncHandler(async (req: Request, res: Response) => {
     message: limitLength(optionalString(body.message), 2000, "message_too_long"),
     source: isIngestSource(body.source) ? body.source : undefined,
     fields: body.fields && typeof body.fields === "object" && !Array.isArray(body.fields) ? body.fields : undefined,
+    extras: body.extras && typeof body.extras === "object" && !Array.isArray(body.extras) ? body.extras : undefined,
   });
   if (duplicate) return res.status(201).json({ ok: true, id: lead.id, reply: null, duplicate: true });
 
