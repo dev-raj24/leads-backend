@@ -8,6 +8,8 @@ export interface BlogPost {
   slug: string;
   excerpt: string | null;
   content: string;
+  metaTitle: string | null;
+  metaDescription: string | null;
   status: BlogPostStatus;
   aiGenerated: boolean;
   publishedAt: string | null;
@@ -19,4 +21,11 @@ export interface BlogDraft {
   title: string;
   excerpt: string;
   content: string;
+  metaTitle: string;
+  metaDescription: string;
+}
+
+export interface PublicBlogPost extends BlogPost {
+  seoTitle: string;
+  seoDescription: string;
 }

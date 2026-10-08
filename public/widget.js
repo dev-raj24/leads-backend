@@ -87,7 +87,8 @@
     ".lw-blog-excerpt{margin:0;opacity:.8}" +
     ".lw-blog-back{display:inline-block;margin-bottom:16px;padding:0;background:none;border:0;color:var(--lw-accent);font-size:14px;cursor:pointer}" +
     ".lw-blog-h1{margin:0 0 4px;font-size:28px;line-height:1.25}" +
-    ".lw-blog-content{white-space:pre-wrap}" +
+    ".lw-blog-content p{margin:0 0 1em;white-space:pre-wrap}" +
+    ".lw-blog-h2{margin:1.4em 0 .5em;font-size:1.15em}" +
     ".lw-blog-empty{opacity:.7}" +
     ".lw-formcard{display:grid;gap:12px;max-width:460px;font-size:15px;line-height:1.4}" +
     ".lw-formcard h3{margin:0;font-size:20px}" +
@@ -1103,7 +1104,15 @@
       root.appendChild(back);
       root.appendChild(el("h2", "lw-blog-h1", post.title));
       root.appendChild(el("div", "lw-blog-date", fmtDate(post.publishedAt)));
-      root.appendChild(el("div", "lw-blog-content", post.content));
+      var body = el("div", "lw-blog-content");
+      String(post.content || "").split(/\n{2,}/).forEach(function (block) {
+        var text = block.trim();
+        if (!text) return;
+        if (/^##\s+/.test(text)) body.appendChild(el("h3", "lw-blog-h2", text.replace(/^##\s+/, "")));
+        else body.appendChild(el("p", "", text));
+      });
+      root.appendChild(body);
+      if (post.title) document.title = post.title;
     }
 
     window.addEventListener("popstate", function () {

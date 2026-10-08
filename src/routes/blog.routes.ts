@@ -3,11 +3,15 @@ import { Router } from "express";
 import * as blogController from "../controllers/blog.controller";
 import { requireAuth } from "../middleware/auth.middleware";
 import { requirePro } from "../middleware/plan.middleware";
-import { limits } from "../middleware/rateLimit.middleware";
+import { createLimiter, limits } from "../middleware/rateLimit.middleware";
 
 export const blogRoutes = Router();
 
+const publicPageLimit = createLimiter({ windowMs: 60_000, max: 240 });
+
 // Public — the site's blog embed script reads published posts, no login.
+blogRoutes.get("/public/blog-site/:slug", publicPageLimit, blogController.publicSite);
+blogRoutes.get("/public/blog-site/:slug/:postSlug", publicPageLimit, blogController.publicSitePost);
 blogRoutes.get("/public/blog", blogController.publicList);
 blogRoutes.get("/public/blog/:slug", blogController.publicGet);
 

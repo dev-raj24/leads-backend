@@ -8,6 +8,7 @@ export interface SiteRow {
   tenant_id: string;
   domain: string | null;
   api_key: string;
+  public_slug: string | null;
   settings: Record<string, unknown>;
   created_at: string;
 }
@@ -18,6 +19,7 @@ export function toSite(row: SiteRow): Site {
     tenantId: row.tenant_id,
     domain: row.domain,
     apiKey: row.api_key,
+    publicSlug: row.public_slug,
     settings: row.settings,
     createdAt: row.created_at,
   };
@@ -146,4 +148,9 @@ export function normalizeLeadFields(raw: unknown): LeadField[] {
     if (out.length >= 12) break;
   }
   return out;
+}
+
+export function newPublicSlug(businessName: string): string {
+  const base = businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "site";
+  return `${base}-${Math.random().toString(16).slice(2, 6)}`;
 }

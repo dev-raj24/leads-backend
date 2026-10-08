@@ -4,7 +4,7 @@ import { env } from "../config/env";
 import { pool, query } from "../config/db";
 import { AppError, badRequest, DatabaseNotConfiguredError, EmailInUseError, InvalidCredentialsError, InvalidResetTokenError } from "../utils/errors";
 import * as mailer from "./mailer.service";
-import { toSite, type SiteRow } from "./site.service";
+import { newPublicSlug, toSite, type SiteRow } from "./site.service";
 import { getTenant } from "./tenant.service";
 import type { AuthUser, LoginInput, Site, SignupInput, Tenant } from "../types";
 
@@ -78,8 +78,8 @@ export async function signup(
     );
 
     const siteRows = await client.query<SiteRow>(
-      `insert into sites (tenant_id) values ($1) returning *`,
-      [tenantId]
+      `insert into sites (tenant_id, public_slug) values ($1, $2) returning *`,
+      [tenantId, newPublicSlug(input.businessName)]
     );
 
     await client.query(

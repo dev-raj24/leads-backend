@@ -12,6 +12,8 @@ import { isNonEmptyString, limitLength, optionalString } from "../utils/validate
 const MAX_TITLE = 200;
 const MAX_EXCERPT = 500;
 const MAX_CONTENT = 100_000;
+const MAX_META_TITLE = 70;
+const MAX_META_DESCRIPTION = 170;
 
 const isValidStatus = (v: unknown): v is BlogPostStatus => v === "draft" || v === "published";
 
@@ -37,13 +39,15 @@ export const getOne = asyncHandler(async (req: Request, res: Response) => {
 
 /** POST /api/blog — { title, excerpt?, content, status?, aiGenerated? } */
 export const create = asyncHandler(async (req: Request, res: Response) => {
-  const { title, excerpt, content, status, aiGenerated } = req.body ?? {};
+  const { title, excerpt, content, status, aiGenerated, metaTitle, metaDescription } = req.body ?? {};
   if (!isNonEmptyString(title)) throw badRequest("missing_title");
   if (!isNonEmptyString(content)) throw badRequest("missing_content");
   if (status !== undefined && !isValidStatus(status)) throw badRequest("invalid_status");
   limitLength(title, MAX_TITLE, "title_too_long");
   limitLength(content, MAX_CONTENT, "content_too_long");
   if (typeof excerpt === "string") limitLength(excerpt, MAX_EXCERPT, "excerpt_too_long");
+  if (typeof metaTitle === "string") limitLength(metaTitle, MAX_META_TITLE, "meta_title_too_long");
+  if (typeof metaDescription === "string") limitLength(metaDescription, MAX_META_DESCRIPTION, "meta_description_too_long");
 
   const site = await siteService.getPrimarySiteForTenant(req.tenantId!);
   const post = await blogService.createBlogPost(req.tenantId!, site?.id ?? null, {
@@ -52,13 +56,17 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
     content,
     status,
     aiGenerated: Boolean(aiGenerated),
+    metaTitle: optionalString(metaTitle),
+    metaDescription: optionalString(metaDescription),
   });
   res.status(201).json({ post });
 });
 
 /** PATCH /api/blog/:id — { title?, excerpt?, content?, status? } */
 export const update = asyncHandler(async (req: Request, res: Response) => {
-  const { title, excerpt, content, status } = req.body ?? {};
+  const { title, excerpt, content, status, metaTitle, metaDescription } = req.body ?? {};
+  if (typeof metaTitle === "string") limitLength(metaTitle, MAX_META_TITLE, "meta_title_too_long");
+  if (typeof metaDescription === "string") limitLength(metaDescription, MAX_META_DESCRIPTION, "meta_description_too_long");
   if (status !== undefined && !isValidStatus(status)) throw badRequest("invalid_status");
   if (typeof title === "string") limitLength(title, MAX_TITLE, "title_too_long");
   if (typeof content === "string") limitLength(content, MAX_CONTENT, "content_too_long");
@@ -69,6 +77,8 @@ export const update = asyncHandler(async (req: Request, res: Response) => {
     excerpt: typeof excerpt === "string" ? excerpt : undefined,
     content: optionalString(content),
     status,
+    metaTitle: typeof metaTitle === "string" ? metaTitle.trim() : undefined,
+    metaDescription: typeof metaDescription === "string" ? metaDescription.trim() : undefined,
   });
   if (!post) throw notFound();
   res.json({ post });
@@ -96,4 +106,18 @@ export const publicGet = asyncHandler(async (req: Request, res: Response) => {
   const post = await blogService.getPublishedPostBySlug(siteKey, req.params.slug);
   if (!post) throw notFound();
   res.json({ post });
+});
+
+/** GET /api/public/blog-site/:slug — the blog's public index page. */
+export const publicSite = asyncHandler(async (req: Request, res: Response) => {
+  const site = await blogService.getPublicBlogSite(req.params.slug);
+  if (!site) throw notFound();
+  res.json({ site });
+});
+
+/** GET /api/public/blog-site/:slug/:postSlug — one post, with its SEO fields. */
+export const publicSitePost = asyncHandler(async (req: Request, res: Response) => {
+  const found = await blogService.getPublicBlogPost(req.params.slug, req.params.postSlug);
+  if (!found) throw notFound();
+  res.json(found);
 });
