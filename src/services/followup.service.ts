@@ -161,3 +161,55 @@ export async function releaseStuckFollowups(minutes: number): Promise<void> {
     [minutes]
   );
 }
+
+export async function skipFollowupById(id: string): Promise<boolean> {
+  const rows = await query<{ id: string }>(
+    `update followups set status = 'cancelled' where id = $1 and status in ('pending', 'approved', 'manual') returning id`,
+    [id]
+  );
+  return rows.length > 0;
+}
+
+export interface HeadsUp {
+  id: string;
+  runAt: string;
+  tenantId: string;
+  leadId: string;
+  leadName: string;
+  businessName: string;
+  template: string | null;
+}
+
+export async function claimHeadsUps(limit: number): Promise<HeadsUp[]> {
+  const rows = await query<{ id: string; run_at: string; tenant_id: string; lead_id: string; lead_name: string | null; contact: string; business: string; template: string | null }>(
+    `update followups f set notified_at = now()
+     from leads l, tenants t
+     where f.id in (
+       select f2.id from followups f2
+       join leads l2 on l2.id = f2.lead_id
+       join tenants t2 on t2.id = l2.tenant_id
+       left join lateral (
+         select s.settings from sites s where s.tenant_id = l2.tenant_id order by s.created_at asc limit 1
+       ) st on true
+       where f2.notified_at is null and f2.run_at > now() and f2.run_at <= now() + interval '60 minutes'
+         and l2.status = 'new'
+         and (f2.status = 'approved'
+              or (f2.status = 'pending' and t2.plan = 'pro' and coalesce(st.settings ->> 'autofollow', 'false') = 'true'))
+       order by f2.run_at asc
+       limit $1
+       for update of f2 skip locked
+     )
+     and l.id = f.lead_id and t.id = l.tenant_id
+     returning f.id, f.run_at, l.tenant_id, l.id as lead_id, l.name as lead_name, l.contact, t.name as business, f.template`,
+    [limit]
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    runAt: r.run_at,
+    tenantId: r.tenant_id,
+    leadId: r.lead_id,
+    leadName: r.lead_name ?? r.contact,
+    businessName: r.business,
+    template: r.template,
+  }));
+}

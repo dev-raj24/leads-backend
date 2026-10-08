@@ -1,10 +1,9 @@
 import type { Request, Response } from "express";
 import * as mailer from "../services/mailer.service";
+import { htmlPage } from "../utils/htmlPage";
 import { asyncHandler } from "../utils/asyncHandler";
 
-const page = (title: string, body: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
-<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f6f3ea;color:#16301f;font:16px/1.5 system-ui,sans-serif}main{max-width:420px;padding:32px 24px;text-align:center}h1{font-size:22px;margin:0 0 8px}p{margin:0 0 20px;color:#4b5f52}button{background:#0b5d4b;color:#fff;border:0;border-radius:10px;padding:12px 22px;font-size:15px;font-weight:600;cursor:pointer}</style></head>
-<body><main>${body}</main></body></html>`;
+const page = htmlPage;
 
 /** GET /api/public/unsubscribe?t= — confirmation page (a button, so mail scanners that open links don't opt anyone out). */
 export const confirmPage = asyncHandler(async (req: Request, res: Response) => {

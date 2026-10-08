@@ -7,3 +7,5 @@ export const customerRoutes = Router();
 
 customerRoutes.get("/customers", requireAuth, customerController.list);
 customerRoutes.get("/customers/:contact", requireAuth, customerController.detail);
+customerRoutes.get("/customers/:contact/export", requireAuth, customerController.exportData);
+customerRoutes.delete("/customers/:contact", requireAuth, customerController.erase);

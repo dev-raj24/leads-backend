@@ -38,6 +38,7 @@ export const env = {
   publicApiUrl: (process.env.PUBLIC_API_URL ?? `http://localhost:${process.env.PORT ?? 4001}`).replace(/\/$/, ""),
   inboundEmailDomain: (process.env.INBOUND_EMAIL_DOMAIN ?? "").trim().toLowerCase(),
   inboundEmailSecret: process.env.INBOUND_EMAIL_SECRET ?? "",
+  redisUrl: process.env.REDIS_URL ?? "",
   quietHours: process.env.QUIET_HOURS !== "off" && nodeEnv !== "test",
   razorpay: {
     keyId: process.env.RAZORPAY_KEY_ID ?? "",

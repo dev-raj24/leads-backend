@@ -1,6 +1,13 @@
 import type { Request } from "express";
+import Redis from "ioredis";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import { RedisStore } from "rate-limit-redis";
 import { env } from "../config/env";
+
+const redis = env.redisUrl && env.nodeEnv !== "test" ? new Redis(env.redisUrl, { maxRetriesPerRequest: 2 }) : null;
+redis?.on("error", (err) => console.error("[redis]", err.message));
+
+let limiterCount = 0;
 
 interface LimiterOptions {
   windowMs: number;
@@ -15,6 +22,10 @@ export function createLimiter({ windowMs, max, key }: LimiterOptions) {
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: key ?? ((req) => ipKeyGenerator(req.ip ?? "")),
+    passOnStoreError: true,
+    ...(redis
+      ? { store: new RedisStore({ sendCommand: (...args: string[]) => redis.call(args[0], ...args.slice(1)) as Promise<never>, prefix: `lw:rl:${limiterCount++}:` }) }
+      : {}),
     handler: (_req, res) => {
       res.status(429).json({ error: "rate_limited" });
     },

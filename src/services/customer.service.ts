@@ -62,3 +62,24 @@ export async function getCustomerSummary(tenantId: string, contact: string): Pro
   );
   return rows[0] ? toCustomerSummary(rows[0]) : null;
 }
+
+export async function exportPerson(tenantId: string, contact: string) {
+  const key = normalizeContact(contact).key;
+  const leads = await query<{ id: string }>(`select id from leads where tenant_id = $1 and contact_key = $2`, [tenantId, key]);
+  if (leads.length === 0) return null;
+  const ids = leads.map((l) => l.id);
+  const [leadRows, messages, events, followups] = await Promise.all([
+    query(`select id, name, contact, message, source, status, custom_fields, created_at from leads where id = any($1::uuid[]) order by created_at`, [ids]),
+    query(`select lead_id, channel, direction, body, ai_generated, created_at from messages where lead_id = any($1::uuid[]) order by created_at`, [ids]),
+    query(`select lead_id, type, payload, created_at from lead_events where lead_id = any($1::uuid[]) order by created_at`, [ids]),
+    query(`select lead_id, run_at, status, template, sent_at from followups where lead_id = any($1::uuid[]) order by run_at`, [ids]),
+  ]);
+  return { exportedAt: new Date().toISOString(), leads: leadRows, messages, events, followups };
+}
+
+export async function erasePerson(tenantId: string, contact: string): Promise<number> {
+  const key = normalizeContact(contact).key;
+  const rows = await query<{ id: string }>(`delete from leads where tenant_id = $1 and contact_key = $2 returning id`, [tenantId, key]);
+  if (rows.length > 0) await query(`insert into unsubscribes (tenant_id, contact_key) values ($1, $2) on conflict do nothing`, [tenantId, key]);
+  return rows.length;
+}

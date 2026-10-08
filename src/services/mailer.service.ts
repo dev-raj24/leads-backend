@@ -90,3 +90,15 @@ export function leadIdFromReplyAddress(address: string): string | null {
   if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
   return m[1].toLowerCase();
 }
+
+const skipSig = (followupId: string) => createHmac("sha256", env.jwtSecret).update(`skip:${followupId}`).digest("base64url");
+
+export const followupSkipToken = (followupId: string) => `${followupId}.${skipSig(followupId)}`;
+
+export function parseFollowupSkipToken(token: string): string | null {
+  const [id, sig] = token.split(".");
+  if (!id || !sig) return null;
+  const expected = Buffer.from(skipSig(id));
+  const given = Buffer.from(sig);
+  return expected.length === given.length && timingSafeEqual(expected, given) ? id : null;
+}

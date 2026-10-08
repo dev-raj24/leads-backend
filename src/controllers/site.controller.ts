@@ -29,6 +29,7 @@ export const updateSettings = asyncHandler(async (req: Request, res: Response) =
   }
 
   if ("leadFields" in settings) settings.leadFields = siteService.normalizeLeadFields(settings.leadFields);
+  if ("formConsent" in settings) settings.formConsent = typeof settings.formConsent === "string" ? settings.formConsent.trim().slice(0, 200) : "";
   if ("allowedDomains" in settings) settings.allowedDomains = siteService.normalizeDomainList(settings.allowedDomains);
 
   const site = await siteService.updateSiteSettings(req.tenantId!, req.params.id, settings);

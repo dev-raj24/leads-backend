@@ -2,6 +2,7 @@
 
 import type { Request, Response } from "express";
 import * as offerService from "../services/offer.service";
+import { consentFor } from "./form.controller";
 import { normalizeLeadFields } from "../services/site.service";
 import * as siteService from "../services/site.service";
 import { getTenant } from "../services/tenant.service";
@@ -142,6 +143,6 @@ export const publicWidgetConfig = asyncHandler(async (req: Request, res: Respons
       design: readChatDesign(site.settings?.widgetDesign),
     },
     blog: { enabled: tenant.plan === "pro" },
-    form: { fields: normalizeLeadFields(site.settings?.leadFields) },
+    form: { fields: normalizeLeadFields(site.settings?.leadFields), consent: consentFor(site.settings) },
   });
 });

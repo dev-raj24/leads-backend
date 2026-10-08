@@ -157,6 +157,18 @@ export async function createFromSite(input: IngestLeadInput & { qualified?: bool
   return { lead, tenantId: site.tenant_id, siteId: site.id, siteSettings: site.settings ?? {}, duplicate: false };
 }
 
+export async function touchVisitor(leadId: string): Promise<void> {
+  await query(`update leads set visitor_seen_at = now() where id = $1 and (visitor_seen_at is null or visitor_seen_at < now() - interval '15 seconds')`, [leadId]);
+}
+
+export async function visitorIsAway(leadId: string): Promise<boolean> {
+  const rows = await query<{ away: boolean }>(
+    `select (visitor_seen_at is null or visitor_seen_at < now() - interval '2 minutes') as away from leads where id = $1`,
+    [leadId]
+  );
+  return rows[0]?.away ?? true;
+}
+
 export async function promoteToLead(tenantId: string, leadId: string, rawContact: string): Promise<Lead | null> {
   const { contact, key } = normalizeContact(rawContact);
   const rows = await query<LeadRow>(

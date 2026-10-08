@@ -24,3 +24,18 @@ export const detail = asyncHandler(async (req: Request, res: Response) => {
 
   res.json({ customer: summary, leads, followups });
 });
+
+/** GET /api/customers/:contact/export — everything held about one person, as JSON. */
+export const exportData = asyncHandler(async (req: Request, res: Response) => {
+  const data = await customerService.exportPerson(req.tenantId!, req.params.contact);
+  if (!data) throw notFound("customer_not_found");
+  res.setHeader("Content-Disposition", 'attachment; filename="customer-data.json"');
+  res.json(data);
+});
+
+/** DELETE /api/customers/:contact — erases every lead, message and follow-up for this person and stops future automatic email to them. */
+export const erase = asyncHandler(async (req: Request, res: Response) => {
+  const removed = await customerService.erasePerson(req.tenantId!, req.params.contact);
+  if (removed === 0) throw notFound("customer_not_found");
+  res.json({ ok: true, removed });
+});

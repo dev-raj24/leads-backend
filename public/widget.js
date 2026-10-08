@@ -91,6 +91,7 @@
     ".lw-blog-empty{opacity:.7}" +
     ".lw-formcard{display:grid;gap:12px;max-width:460px;font-size:15px;line-height:1.4}" +
     ".lw-formcard h3{margin:0;font-size:20px}" +
+    ".lw-consent{font-size:12px;opacity:.7}" +
     ".lw-formcard label{display:grid;gap:4px;font-size:13px;font-weight:600}" +
     ".lw-formcard textarea.lw-input{min-height:84px;resize:vertical;font:inherit}" +
     ".lw-formcard .lw-input{font-weight:400}" +
@@ -874,6 +875,7 @@
     [trap, error, submit].forEach(function (n) {
       form.appendChild(n);
     });
+    if (formConfig.consent) form.appendChild(el("div", "lw-consent", formConfig.consent));
     root.appendChild(form);
 
     form.onsubmit = function (e) {

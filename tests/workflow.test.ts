@@ -3,6 +3,7 @@ import { after, afterEach, before, describe, it, mock } from "node:test";
 import { pool } from "../src/config/db";
 import * as gemini from "../src/config/gemini";
 import { env } from "../src/config/env";
+import { sendHeadsUps } from "../src/services/followup-heads-up.service";
 import * as mailer from "../src/services/mailer.service";
 import { startApi, type Api } from "./helpers";
 
@@ -231,5 +232,99 @@ describe("account security", () => {
     assert.equal((await api.call("GET", `/api/leads/${id}`, { token: b.token })).status, 404);
     assert.equal((await api.call("GET", "/api/leads", { token: b.token })).body.leads.length, 0);
     assert.ok(pool);
+  });
+});
+
+describe("heads-up, chat email, data rights, hosted form", () => {
+  it("warns the owner before an automatic follow-up and lets them stop it from the email", async () => {
+    stubMail();
+    mock.method(gemini, "completeText", async () => "Hi.");
+    const { token, siteKey, siteId, email } = await api.signup("headsup", { plan: "pro" });
+    await api.call("PATCH", `/api/sites/${siteId}/settings`, { token, body: { settings: { autofollow: true } } });
+    await ingest(siteKey, { contact: "wait@x.co", message: "hello there" });
+    await settle();
+    const leadId = (await api.call("GET", "/api/leads", { token })).body.leads[0].id;
+    const created = await api.call("POST", `/api/leads/${leadId}/followups`, { token, body: { runAt: new Date(Date.now() + 30 * 60_000).toISOString() } });
+    sent = [];
+
+    await sendHeadsUps();
+    const warning = sent.find((m) => m.to === email && /goes out soon/.test(m.subject));
+    assert.ok(warning);
+    const link = new URL(warning.text.match(/https?:\/\/\S+followup-skip\S+/)![0]);
+    const url = new URL(`${link.pathname}${link.search}`, `http://127.0.0.1:${(globalThis as any).__apiPort}`);
+
+    sent = [];
+    await sendHeadsUps();
+    assert.equal(sent.filter((m) => /goes out soon/.test(m.subject)).length, 0);
+
+    assert.equal((await fetch(url)).status, 200);
+    assert.equal((await fetch(url.toString().replace(/.$/, "x"))).status, 400);
+    assert.equal((await fetch(url, { method: "POST" })).status, 200);
+    const after = await api.call("GET", `/api/leads/${leadId}`, { token });
+    assert.equal(after.body.followups.find((f: any) => f.id === created.body.followup.id).status, "cancelled");
+  });
+
+  it("emails a team chat reply to a visitor who has left the page, but not to one still reading", async () => {
+    stubMail();
+    mock.method(gemini, "completeText", async () => "Sure.");
+    const acct = await api.signup("chatmail", { plan: "pro" });
+    await api.call("PATCH", `/api/sites/${acct.siteId}/settings`, { token: acct.token, body: { settings: { widget: true } } });
+    await api.call("PUT", "/api/ai-config", { token: acct.token, body: { about: "A dental clinic in Pune." } });
+    const start = await api.call("POST", "/api/public/chat/start", { body: { siteKey: acct.siteKey, message: "Hi, reach me at chatter@x.co" } });
+    await settle();
+    sent = [];
+
+    await api.call("POST", `/api/chat-widget/conversations/${start.body.leadId}/reply`, { token: acct.token, body: { text: "We can see you at 5." } });
+    const mail = sent.find((m) => m.to === "chatter@x.co");
+    assert.ok(mail);
+    assert.match(mail.text, /We can see you at 5\./);
+    assert.match(mail.replyTo ?? "", /^reply\+/);
+
+    await api.call("GET", `/api/public/chat/${start.body.leadId}/messages?siteKey=${acct.siteKey}`);
+    await settle();
+    sent = [];
+    await api.call("POST", `/api/chat-widget/conversations/${start.body.leadId}/reply`, { token: acct.token, body: { text: "Anything else?" } });
+    assert.equal(sent.filter((m) => m.to === "chatter@x.co").length, 0);
+  });
+
+  it("exports and erases one person's data and stops further automatic email to them", async () => {
+    stubMail();
+    mock.method(gemini, "completeText", async () => "Hi.");
+    const { token, siteKey } = await api.signup("erase", { plan: "pro" });
+    await ingest(siteKey, { name: "Dev", contact: "erase.me@x.co", message: "please help" });
+    await settle();
+    const other = await api.signup("erase_other");
+
+    const exported = await api.call("GET", "/api/customers/erase.me@x.co/export", { token });
+    assert.equal(exported.status, 200);
+    assert.equal(exported.body.leads.length, 1);
+    assert.ok(exported.body.messages.length >= 1);
+    assert.equal((await api.call("GET", "/api/customers/erase.me@x.co/export", { token: other.token })).status, 404);
+    assert.equal((await api.call("DELETE", "/api/customers/erase.me@x.co", { token: other.token })).status, 404);
+
+    const erased = await api.call("DELETE", "/api/customers/erase.me@x.co", { token });
+    assert.equal(erased.body.removed, 1);
+    assert.equal((await api.call("GET", "/api/leads", { token })).body.leads.length, 0);
+    assert.equal((await api.call("GET", "/api/customers/erase.me@x.co/export", { token })).status, 404);
+
+    sent = [];
+    await ingest(siteKey, { contact: "erase.me@x.co", message: "back again" });
+    await settle();
+    assert.equal(sent.filter((m) => m.to === "erase.me@x.co").length, 0);
+  });
+
+  it("serves the hosted form page its fields and consent line, and lets owners change the line", async () => {
+    const { token, siteKey, siteId } = await api.signup("hosted");
+    await api.call("PATCH", `/api/sites/${siteId}/settings`, { token, body: { settings: { leadFields: [{ name: "Service" }] } } });
+    const page = await api.call("GET", `/api/public/form?siteKey=${siteKey}`);
+    assert.equal(page.body.businessName, "Biz hosted");
+    assert.equal(page.body.fields[0].name, "Service");
+    assert.match(page.body.consent, /reply to your enquiry/);
+    assert.equal(page.body.poweredBy, true);
+    assert.equal((await api.call("GET", "/api/public/form?siteKey=nope")).status, 404);
+
+    await api.call("PATCH", `/api/sites/${siteId}/settings`, { token, body: { settings: { leadFields: [], formConsent: "  We may call you about this enquiry only.  " } } });
+    assert.equal((await api.call("GET", `/api/public/form?siteKey=${siteKey}`)).body.consent, "We may call you about this enquiry only.");
+    assert.equal((await api.call("GET", `/api/public/widget-config?siteKey=${siteKey}`)).body.form.consent, "We may call you about this enquiry only.");
   });
 });

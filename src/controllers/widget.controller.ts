@@ -112,6 +112,7 @@ export const continueChat = asyncHandler(async (req: Request, res: Response) => 
   if (!lead || lead.siteId !== site.id) throw notFound();
 
   const inbound = await messageService.addMessage(lead.id, { channel: "chat", direction: "inbound", body: text });
+  leadService.touchVisitor(lead.id).catch(() => undefined);
 
   if (!lead.qualified) {
     const given = optionalString(body.contact);
@@ -146,6 +147,8 @@ export const messages = asyncHandler(async (req: Request, res: Response) => {
   const site = await resolveActiveWidgetSite(req.query.siteKey);
   const lead = await leadService.getLeadById(site.tenantId, req.params.leadId);
   if (!lead || lead.siteId !== site.id) throw notFound();
+
+  leadService.touchVisitor(lead.id).catch(() => undefined);
 
   const after = typeof req.query.after === "string" ? Date.parse(req.query.after) : NaN;
   const all = await messageService.getMessagesForLead(site.tenantId, lead.id);
