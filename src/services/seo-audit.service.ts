@@ -103,10 +103,39 @@ async function fetchPage(url: string): Promise<PageReport | null> {
   } catch (err) {
     const reason = err instanceof Error ? err.message : "failed";
     return {
-      url, status: 0, title: "", description: "", h1: 0, words: 0, images: 0, imagesWithoutAlt: 0, internalLinks: [], ms: 0, score: 0, excerpt: "", headings: [], missingAlt: [],
+      url, status: 0, title: "", description: "", h1: 0, words: 0, images: 0, imagesWithoutAlt: 0, internalLinks: [], ms: 0, score: 0, jsRendered: false, excerpt: "", headings: [], missingAlt: [],
       issues: [{ id: "unreachable", severity: "critical", points: 100, message: `The page could not be reached (${reason}).`, fix: "Check that the address is right and the site is online." }],
     };
   }
+}
+
+const ASSET = /\.(jpe?g|png|gif|svg|webp|pdf|zip|css|js|ico|mp4|xml|txt)$/i;
+
+async function sitemapPages(origin: string, host: string): Promise<string[]> {
+  const read = async (url: string) => {
+    try {
+      const res = await safeGet(url, { allowPrivate: allowPrivate(), maxBytes: 500_000 });
+      return res.status === 200 ? res.body : "";
+    } catch {
+      return "";
+    }
+  };
+  const locs = (xml: string) => [...xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map((m) => m[1]);
+
+  let xml = await read(`${origin}/sitemap.xml`);
+  if (/<sitemapindex/i.test(xml)) {
+    const child = locs(xml)[0];
+    xml = child ? await read(child) : "";
+  }
+  const same = (u: string) => {
+    try {
+      const url = new URL(u);
+      return /^https?:$/.test(url.protocol) && url.hostname.replace(/^www\./, "") === host.replace(/^www\./, "") && !ASSET.test(url.pathname);
+    } catch {
+      return false;
+    }
+  };
+  return locs(xml).filter(same);
 }
 
 async function siteLevelChecks(origin: string): Promise<{ robotsBlocksAll: boolean; hasSitemap: boolean }> {
@@ -160,6 +189,16 @@ async function runAudit(id: string, tenantId: string, startUrl: string): Promise
     const origin = new URL(first.url).origin;
     const pages: PageReport[] = [first];
     const queue = first.internalLinks.filter((l) => l !== first.url).slice(0, MAX_PAGES - 1);
+    if (queue.length < MAX_PAGES - 1) {
+      const known = new Set([first.url, ...queue]);
+      for (const url of await sitemapPages(origin, new URL(first.url).hostname)) {
+        if (queue.length >= MAX_PAGES - 1) break;
+        if (!known.has(url)) {
+          known.add(url);
+          queue.push(url);
+        }
+      }
+    }
 
     for (let i = 0; i < queue.length; i += 3) {
       const batch = await Promise.all(queue.slice(i, i + 3).map(fetchPage));

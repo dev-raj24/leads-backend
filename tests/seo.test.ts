@@ -67,6 +67,49 @@ describe("seo page analyzer", () => {
   });
 });
 
+describe("javascript-built pages and sitemap discovery", () => {
+  const shell = `<html lang="en"><head><title>Escorts Realm</title><meta name="viewport" content="width=device-width"></head><body><div id="__next"></div>${Array.from({ length: 6 }, (_, i) => `<script src="/_next/static/chunk${i}.js"></script>`).join("")}</body></html>`;
+
+  it("tells a JavaScript-only page apart from a thin one and does not blame the missing heading", () => {
+    const page = analyzePage({ url: "https://x.test/", status: 200, html: shell, ms: 50, bytes: 900 });
+    const ids = page.issues.map((i) => i.id);
+    assert.equal(page.jsRendered, true);
+    assert.ok(ids.includes("js_rendered"));
+    for (const noise of ["h1_missing", "thin", "thin_light", "h2"]) assert.ok(!ids.includes(noise), noise);
+
+    const thin = analyzePage({ url: "https://x.test/", status: 200, html: "<html><head><title>Plain page title here for test</title></head><body><h1>Hi</h1><p>Short.</p></body></html>", ms: 50, bytes: 200 });
+    assert.equal(thin.jsRendered, false);
+    assert.ok(thin.issues.some((i) => i.id === "thin"));
+  });
+
+  it("finds pages from the sitemap when the home page has no links in its source", async () => {
+    const hidden = http.createServer((req, res) => {
+      const routes: Record<string, string> = {
+        "/": shell,
+        "/sitemap.xml": `<?xml version="1.0"?><urlset><url><loc>http://${req.headers.host}/pricing</loc></url><url><loc>http://${req.headers.host}/team</loc></url></urlset>`,
+        "/pricing": "<html lang='en'><head><title>Pricing for our services across Canada | Escorts</title></head><body><h1>Pricing</h1></body></html>",
+        "/team": "<html><head><title>Team</title></head><body><h1>Team</h1></body></html>",
+      };
+      const body = routes[req.url ?? "/"];
+      res.writeHead(body ? 200 : 404, { "content-type": req.url === "/sitemap.xml" ? "application/xml" : "text/html" });
+      res.end(body ?? "missing");
+    });
+    await new Promise<void>((resolve) => hidden.listen(0, "127.0.0.1", resolve));
+    const origin = `http://127.0.0.1:${(hidden.address() as AddressInfo).port}`;
+    try {
+      const { token } = await api.signup("seo_js", { plan: "pro" });
+      const started = await api.call("POST", "/api/seo/audits", { token, body: { url: origin } });
+      const audit = await waitFor(token, started.body.audit.id);
+      assert.equal(audit.status, "done");
+      const paths = audit.result.pages.map((p: any) => new URL(p.url).pathname).sort();
+      assert.deepEqual(paths, ["/", "/pricing", "/team"]);
+      assert.equal(audit.result.siteIssues.some((i: any) => i.id === "sitemap"), false);
+    } finally {
+      await new Promise<void>((resolve) => hidden.close(() => resolve()));
+    }
+  });
+});
+
 describe("fetch safety", () => {
   it("refuses internal addresses, odd ports, credentials and non-web schemes in production mode", () => {
     for (const bad of ["http://127.0.0.1/", "http://10.0.0.5/", "http://169.254.169.254/latest/meta-data", "http://[::1]/", "http://192.168.1.1/", "http://localhost/", "http://svc.internal/", "https://example.com:22/", "ftp://example.com/", "file:///etc/passwd", "https://user:pw@example.com/"]) {

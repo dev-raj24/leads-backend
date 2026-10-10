@@ -23,6 +23,7 @@ export interface PageReport {
   ms: number;
   score: number;
   issues: SeoIssue[];
+  jsRendered: boolean;
   excerpt: string;
   headings: string[];
   missingAlt: Array<{ src: string; context: string }>;
@@ -35,6 +36,7 @@ export function analyzePage(input: { url: string; status: number; html: string; 
   const issues: SeoIssue[] = [];
   const $ = cheerio.load(html);
 
+  const scriptCount = $("script").length;
   const title = $("head > title").first().text().replace(/\s+/g, " ").trim();
   const description = ($('meta[name="description"]').attr("content") ?? "").replace(/\s+/g, " ").trim();
   const h1 = $("h1").length;
@@ -88,21 +90,26 @@ export function analyzePage(input: { url: string; status: number; html: string; 
   const words = text ? text.split(" ").length : 0;
   const excerpt = text.slice(0, 700);
 
+  const jsShell = words < 40 && (scriptCount >= 5 || /id=["'](root|__next|app)["']|_next\/static|__NEXT_DATA__|self\.__next_f/.test(html));
+  if (jsShell) {
+    issues.push(issue("js_rendered", "critical", 15, "This page only shows its content after JavaScript runs. A search engine that does not run JavaScript sees an almost empty page.", "Make the server send the real content: pre-render the page, or in Next.js keep page content in server components (not 'use client' or ssr:false) so the title, headings and text are in the page source."));
+  }
+
   if (status !== 200) issues.push(issue("status", "critical", 40, `The page answered with status ${status || "no response"}.`, "Make sure this page loads normally. Search engines drop pages that error."));
   if (!title) issues.push(issue("title_missing", "critical", 15, "The page has no title.", "Add a <title> of about 30 to 60 characters that says what the page is and includes your main keyword."));
   else if (title.length < 20 || title.length > 65) issues.push(issue("title_length", "warning", 5, `The title is ${title.length} characters.`, "Keep the title between 30 and 60 characters so Google shows all of it."));
   if (!description) issues.push(issue("description_missing", "critical", 12, "The page has no meta description.", "Add a meta description of 70 to 160 characters that makes someone want to click."));
   else if (description.length < 70 || description.length > 165) issues.push(issue("description_length", "warning", 4, `The meta description is ${description.length} characters.`, "Keep it between 70 and 160 characters."));
-  if (h1 === 0) issues.push(issue("h1_missing", "critical", 10, "The page has no main heading (H1).", "Add one H1 that states the page's topic in plain words."));
+  if (h1 === 0 && !jsShell) issues.push(issue("h1_missing", "critical", 10, "The page has no main heading (H1).", "Add one H1 that states the page's topic in plain words."));
   else if (h1 > 1) issues.push(issue("h1_multiple", "warning", 4, `The page has ${h1} H1 headings.`, "Use a single H1 and make the other headings H2 or H3."));
   if (!viewport) issues.push(issue("viewport", "critical", 8, "The page is not set up for phones (no viewport tag).", 'Add <meta name="viewport" content="width=device-width, initial-scale=1">. Google ranks on the mobile version.'));
   if (robots.includes("noindex")) issues.push(issue("noindex", "critical", 25, "This page tells Google not to list it (noindex).", "Remove the noindex tag if you want this page to appear in search."));
   if (!canonical) issues.push(issue("canonical", "warning", 3, "The page has no canonical link.", "Add a canonical link so Google knows which address is the main one."));
   if (url.startsWith("http://") && !/^http:\/\/(localhost|127\.)/.test(url)) issues.push(issue("https", "critical", 10, "The page is served without HTTPS.", "Install an SSL certificate and redirect http to https."));
   if (imagesWithoutAlt > 0) issues.push(issue("alt", "warning", Math.min(8, imagesWithoutAlt), `${imagesWithoutAlt} of ${images.length} images have no alt text.`, "Describe each meaningful image in its alt attribute. It helps image search and accessibility."));
-  if (words < 200) issues.push(issue("thin", "warning", 8, `The page has only about ${words} words.`, "Add useful detail: services, prices, who you serve, common questions. Aim for 300 words or more."));
-  else if (words < 300) issues.push(issue("thin_light", "info", 3, `The page has about ${words} words.`, "A little more detail would help this page rank. Aim for 300 words or more."));
-  if (h2 === 0 && words >= 300) issues.push(issue("h2", "info", 2, "The page has no sub-headings.", "Break the page into sections with H2 headings."));
+  if (!jsShell && words < 200) issues.push(issue("thin", "warning", 8, `The page has only about ${words} words.`, "Add useful detail: services, prices, who you serve, common questions. Aim for 300 words or more."));
+  else if (!jsShell && words < 300) issues.push(issue("thin_light", "info", 3, `The page has about ${words} words.`, "A little more detail would help this page rank. Aim for 300 words or more."));
+  if (h2 === 0 && words >= 300 && !jsShell) issues.push(issue("h2", "info", 2, "The page has no sub-headings.", "Break the page into sections with H2 headings."));
   if (!lang) issues.push(issue("lang", "info", 2, "The page does not declare its language.", 'Add lang="en" (or your language) to the <html> tag.'));
   if (!ogTitle) issues.push(issue("og", "info", 2, "No social sharing tags (Open Graph).", "Add og:title, og:description and og:image so links look good when shared."));
   if (jsonLd === 0) issues.push(issue("schema", "info", 2, "No structured data found.", "Add LocalBusiness or Organization structured data (JSON-LD) so Google understands your business."));
@@ -110,7 +117,7 @@ export function analyzePage(input: { url: string; status: number; html: string; 
   if (bytes > 500_000) issues.push(issue("heavy", "info", 3, `The HTML alone is ${Math.round(bytes / 1000)} KB.`, "Trim inline scripts and styles, or split the page."));
 
   const score = Math.max(0, 100 - issues.reduce((sum, i) => sum + i.points, 0));
-  return { url, status, title, description, h1, words, images: images.length, imagesWithoutAlt, internalLinks: [...internal], ms, score, issues, excerpt, headings, missingAlt };
+  return { url, status, title, description, h1, words, images: images.length, imagesWithoutAlt, internalLinks: [...internal], ms, score, issues, jsRendered: jsShell, excerpt, headings, missingAlt };
 }
 
 export interface SiteReport {

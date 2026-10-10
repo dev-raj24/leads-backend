@@ -179,6 +179,20 @@ export async function buildFixPack(tenantId: string, page: PageReport): Promise<
   if (need.ideas && Array.isArray(ai?.contentIdeas) && ai!.contentIdeas!.length > 0) {
     items.push({ id: "thin", label: "What to add to this page", kind: "steps", where: "In the page body.", value: ai!.contentIdeas!.map((idea, i) => `${i + 1}. ${clip(String(idea), 140)}`).join("\n") });
   }
+  if (has(page, "js_rendered")) {
+    items.push({
+      id: "js_rendered",
+      label: "Put the real content in the page source",
+      kind: "steps",
+      where: "In how the site is built (developer).",
+      value:
+        "1. Open the page and choose View Source. If you do not see your headings and text there, search engines that do not run JavaScript do not see them either.\n" +
+        "2. Next.js: render the page content in server components. Remove 'use client' from the page and from the components that hold its text, and do not load them with ssr:false.\n" +
+        "3. Other React or Vue sites: use static export or server-side rendering for the pages you want to rank.\n" +
+        "4. Check again with View Source, then scan the site here once more.",
+      note: "Google can run JavaScript, but it does so later and not always. Other search engines and link previews often do not run it at all.",
+    });
+  }
   if (has(page, "https")) {
     items.push({ id: "https", label: "Move the site to HTTPS", kind: "steps", where: "At your hosting provider.", value: "Install an SSL certificate (most hosts offer it free) and redirect every http:// address to https://." });
   }
