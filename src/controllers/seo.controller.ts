@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import * as overrides from "../services/seo-overrides.service";
 import * as seoFixes from "../services/seo-fixes.service";
 import * as seo from "../services/seo-audit.service";
 import * as siteService from "../services/site.service";
@@ -33,4 +34,24 @@ export const writeFixes = asyncHandler(async (req: Request, res: Response) => {
   const url = req.body?.url;
   if (!isNonEmptyString(url)) throw badRequest("missing_url");
   res.json({ pack: await seoFixes.writeFixesForPage(req.tenantId!, req.params.id, url) });
+});
+
+/** POST /api/seo/audits/:id/apply — { url } — makes the written fixes for a page go live through the site's script. */
+export const applyFixes = asyncHandler(async (req: Request, res: Response) => {
+  const url = req.body?.url;
+  if (!isNonEmptyString(url)) throw badRequest("missing_url");
+  res.json({ override: await overrides.applyFromAudit(req.tenantId!, req.params.id, url) });
+});
+
+/** GET /api/seo/overrides */
+export const listApplied = asyncHandler(async (req: Request, res: Response) => {
+  res.json({ overrides: await overrides.listOverrides(req.tenantId!) });
+});
+
+/** DELETE /api/seo/overrides — { path } */
+export const removeApplied = asyncHandler(async (req: Request, res: Response) => {
+  const path = req.body?.path;
+  if (!isNonEmptyString(path)) throw badRequest("missing_path");
+  if (!(await overrides.removeOverride(req.tenantId!, path))) throw notFound();
+  res.json({ ok: true });
 });
