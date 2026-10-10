@@ -38,6 +38,13 @@ export const env = {
   publicApiUrl: (process.env.PUBLIC_API_URL ?? `http://localhost:${process.env.PORT ?? 4001}`).replace(/\/$/, ""),
   inboundEmailDomain: (process.env.INBOUND_EMAIL_DOMAIN ?? "").trim().toLowerCase(),
   inboundEmailSecret: process.env.INBOUND_EMAIL_SECRET ?? "",
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+    authBase: process.env.GOOGLE_AUTH_BASE ?? "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenBase: process.env.GOOGLE_TOKEN_BASE ?? "https://oauth2.googleapis.com",
+    apiBase: process.env.GOOGLE_API_BASE ?? "https://www.googleapis.com",
+  },
   redisUrl: process.env.REDIS_URL ?? "",
   quietHours: process.env.QUIET_HOURS !== "off" && nodeEnv !== "test",
   razorpay: {
@@ -48,6 +55,9 @@ export const env = {
   },
   get billingConfigured() {
     return Boolean(this.razorpay.keyId && this.razorpay.keySecret && this.razorpay.planId);
+  },
+  get googleConfigured() {
+    return Boolean(this.google.clientId && this.google.clientSecret);
   },
   get selfServePro() {
     return !isProd && !this.billingConfigured;
