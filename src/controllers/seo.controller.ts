@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import * as seoFixes from "../services/seo-fixes.service";
 import * as seo from "../services/seo-audit.service";
 import * as siteService from "../services/site.service";
 import { asyncHandler } from "../utils/asyncHandler";
@@ -9,7 +10,7 @@ import { isNonEmptyString, limitLength } from "../utils/validate";
 export const list = asyncHandler(async (req: Request, res: Response) => {
   const [audits, site] = await Promise.all([seo.listAudits(req.tenantId!), siteService.getPrimarySiteForTenant(req.tenantId!)]);
   const allowed = site ? siteService.normalizeDomainList(site.settings.allowedDomains) : [];
-  res.json({ audits: audits.map(({ result, ...rest }) => ({ ...rest, pageCount: result?.pages.length ?? 0 })), suggestedUrl: allowed[0] ? `https://${allowed[0]}` : site?.domain ?? "" });
+  res.json({ audits: audits.map(({ result, fixes: _fixes, ...rest }) => ({ ...rest, pageCount: result?.pages.length ?? 0 })), suggestedUrl: allowed[0] ? `https://${allowed[0]}` : site?.domain ?? "" });
 });
 
 /** GET /api/seo/audits/:id */
@@ -25,4 +26,11 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
   if (!isNonEmptyString(url)) throw badRequest("missing_url");
   limitLength(url, 300, "url_too_long");
   res.status(202).json({ audit: await seo.startAudit(req.tenantId!, url) });
+});
+
+/** POST /api/seo/audits/:id/fixes — { url } — writes ready-to-paste fixes for one scanned page. */
+export const writeFixes = asyncHandler(async (req: Request, res: Response) => {
+  const url = req.body?.url;
+  if (!isNonEmptyString(url)) throw badRequest("missing_url");
+  res.json({ pack: await seoFixes.writeFixesForPage(req.tenantId!, req.params.id, url) });
 });

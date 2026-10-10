@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { after, before, describe, it } from "node:test";
+import { after, afterEach, before, describe, it, mock } from "node:test";
+import * as gemini from "../src/config/gemini";
 import { analyzePage } from "../src/services/seo-analyzer";
 import { assertFetchable, FetchBlockedError, isPrivateAddress } from "../src/utils/safeFetch";
 import { startApi, type Api } from "./helpers";
@@ -9,6 +10,8 @@ import { startApi, type Api } from "./helpers";
 let api: Api;
 let site: http.Server;
 let base = "";
+
+afterEach(() => mock.restoreAll());
 
 const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i % 40}`).join(" ");
 
@@ -126,5 +129,66 @@ describe("seo audit API", () => {
     assert.equal(audit.status, "done");
     assert.equal(audit.result.pages[0].status, 0);
     assert.equal(audit.result.pages[0].issues[0].id, "unreachable");
+  });
+});
+
+describe("ready-to-paste fixes", () => {
+  async function scanned(label: string) {
+    const acct = await api.signup(label, { plan: "pro" });
+    await api.call("PUT", "/api/ai-config", { token: acct.token, body: { about: "A family dental clinic in Indore.", services: [{ name: "Braces", price: "", hidePrice: true }] } });
+    const started = await api.call("POST", "/api/seo/audits", { token: acct.token, body: { url: base } });
+    const audit = await waitFor(acct.token, started.body.audit.id);
+    return { ...acct, audit };
+  }
+
+  it("writes the missing tags and image descriptions for a weak page, and nothing for a good one", async () => {
+    const { token, audit } = await scanned("fixes");
+    mock.method(gemini, "completeText", async () =>
+      JSON.stringify({ title: "Dental clinic in Indore | Smile Studio", description: "Painless braces, whitening and check-ups for the whole family in Indore. Book a visit with Smile Studio this week.", h1: "Your family dentist in Indore", alts: ["Dentist checking a patient"], contentIdeas: ["Treatments we offer", "Prices and payment options", "Meet the team"] })
+    );
+
+    const home = audit.result.pages.find((p: any) => new URL(p.url).pathname === "/");
+    const res = await api.call("POST", `/api/seo/audits/${audit.id}/fixes`, { token, body: { url: home.url } });
+    assert.equal(res.status, 200);
+    const byId = Object.fromEntries(res.body.pack.items.map((i: any) => [i.id, i]));
+    assert.equal(res.body.pack.aiUsed, true);
+    assert.equal(byId.title.value, "<title>Dental clinic in Indore | Smile Studio</title>");
+    assert.match(byId.description.value, /^<meta name="description" content="Painless braces/);
+    assert.match(byId.viewport.value, /viewport/);
+    assert.equal(byId.canonical.value, `<link rel="canonical" href="${home.url}">`);
+    assert.match(byId.h1_multiple.value, /Keep one H1/);
+    assert.match(byId.alt.value, /a\.png\s+→\s+Dentist checking a patient/);
+    assert.match(byId.schema.value, /"@type": "LocalBusiness"/);
+    assert.match(byId.schema.value, /Braces/);
+    assert.match(byId.thin.value, /^1\. Treatments we offer/);
+    assert.ok(res.body.pack.items.every((i: any) => i.value.length > 0));
+
+    const good = audit.result.pages.find((p: any) => new URL(p.url).pathname === "/about");
+    const none = await api.call("POST", `/api/seo/audits/${audit.id}/fixes`, { token, body: { url: good.url } });
+    assert.deepEqual(none.body.pack.items, []);
+
+    const stored = await api.call("GET", `/api/seo/audits/${audit.id}`, { token });
+    assert.ok(stored.body.audit.fixes[home.url].items.length > 0);
+  });
+
+  it("still gives the fixed-format tags when the AI is down, and refuses unknown pages and other accounts", async () => {
+    const { token, audit } = await scanned("fixes_down");
+    mock.method(gemini, "completeText", async () => {
+      throw new Error("down");
+    });
+    const home = audit.result.pages.find((p: any) => new URL(p.url).pathname === "/");
+    const res = await api.call("POST", `/api/seo/audits/${audit.id}/fixes`, { token, body: { url: home.url } });
+    assert.equal(res.body.pack.aiUsed, false);
+    const ids = res.body.pack.items.map((i: any) => i.id);
+    assert.ok(ids.includes("viewport") && ids.includes("canonical"));
+    assert.ok(!ids.includes("title"));
+
+    assert.equal((await api.call("POST", `/api/seo/audits/${audit.id}/fixes`, { token, body: { url: "https://elsewhere.test/" } })).body.error, "unknown_page");
+    assert.equal((await api.call("POST", `/api/seo/audits/${audit.id}/fixes`, { token, body: {} })).body.error, "missing_url");
+
+    const other = await api.signup("fixes_other", { plan: "pro" });
+    assert.equal((await api.call("POST", `/api/seo/audits/${audit.id}/fixes`, { token: other.token, body: { url: home.url } })).status, 404);
+    const free = await api.signup("fixes_free");
+    assert.equal((await api.call("POST", `/api/seo/audits/${audit.id}/fixes`, { token: free.token, body: { url: home.url } })).status, 403);
   });
 });

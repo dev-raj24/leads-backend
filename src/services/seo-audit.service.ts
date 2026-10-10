@@ -16,6 +16,7 @@ export interface SeoAudit {
   result: SiteReport | null;
   aiPlan: string | null;
   error: string | null;
+  fixes: Record<string, unknown>;
   createdAt: string;
   finishedAt: string | null;
 }
@@ -28,6 +29,7 @@ interface Row {
   result: SiteReport | null;
   ai_plan: string | null;
   error: string | null;
+  fixes: Record<string, unknown> | null;
   created_at: string;
   finished_at: string | null;
 }
@@ -40,6 +42,7 @@ const toAudit = (r: Row): SeoAudit => ({
   result: r.result,
   aiPlan: r.ai_plan,
   error: r.error,
+  fixes: r.fixes ?? {},
   createdAt: r.created_at,
   finishedAt: r.finished_at,
 });
@@ -100,7 +103,7 @@ async function fetchPage(url: string): Promise<PageReport | null> {
   } catch (err) {
     const reason = err instanceof Error ? err.message : "failed";
     return {
-      url, status: 0, title: "", description: "", h1: 0, words: 0, images: 0, imagesWithoutAlt: 0, internalLinks: [], ms: 0, score: 0,
+      url, status: 0, title: "", description: "", h1: 0, words: 0, images: 0, imagesWithoutAlt: 0, internalLinks: [], ms: 0, score: 0, excerpt: "", headings: [], missingAlt: [],
       issues: [{ id: "unreachable", severity: "critical", points: 100, message: `The page could not be reached (${reason}).`, fix: "Check that the address is right and the site is online." }],
     };
   }
@@ -166,13 +169,16 @@ async function runAudit(id: string, tenantId: string, startUrl: string): Promise
     const site = await siteLevelChecks(origin);
     const report = summarizeSite(pages, site);
 
-    const tenantPlan = await query<{ plan: string }>(`select plan from tenants where id = $1`, [tenantId]);
-    const plan = tenantPlan[0]?.plan === "pro" ? await aiPlan(report, startUrl) : null;
-
     await query(
-      `update seo_audits set status = 'done', score = $2, result = $3::jsonb, ai_plan = $4, finished_at = now() where id = $1`,
-      [id, report.score, JSON.stringify(report), plan]
+      `update seo_audits set status = 'done', score = $2, result = $3::jsonb, finished_at = now() where id = $1`,
+      [id, report.score, JSON.stringify(report)]
     );
+
+    const tenantPlan = await query<{ plan: string }>(`select plan from tenants where id = $1`, [tenantId]);
+    if (tenantPlan[0]?.plan === "pro") {
+      const plan = await aiPlan(report, startUrl);
+      if (plan) await query(`update seo_audits set ai_plan = $2 where id = $1`, [id, plan]);
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "The scan failed.";
     await query(`update seo_audits set status = 'failed', error = $2, finished_at = now() where id = $1`, [id, message.slice(0, 300)]);

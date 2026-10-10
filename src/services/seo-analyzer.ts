@@ -23,6 +23,9 @@ export interface PageReport {
   ms: number;
   score: number;
   issues: SeoIssue[];
+  excerpt: string;
+  headings: string[];
+  missingAlt: Array<{ src: string; context: string }>;
 }
 
 const issue = (id: string, severity: Severity, points: number, message: string, fix: string): SeoIssue => ({ id, severity, points, message, fix });
@@ -44,7 +47,24 @@ export function analyzePage(input: { url: string; status: number; html: string; 
   const jsonLd = $('script[type="application/ld+json"]').length;
 
   const images = $("img");
-  const imagesWithoutAlt = images.filter((_, el) => ($(el).attr("alt") ?? "").trim() === "").length;
+  const missingImages = images.filter((_, el) => ($(el).attr("alt") ?? "").trim() === "");
+  const imagesWithoutAlt = missingImages.length;
+  const missingAlt = missingImages
+    .toArray()
+    .slice(0, 8)
+    .map((el) => {
+      const heading = $(el).closest("section, article, div").find("h1, h2, h3").first().text();
+      const caption = $(el).closest("figure").find("figcaption").text();
+      return {
+        src: ($(el).attr("src") ?? "").slice(0, 160),
+        context: (caption || heading || $(el).parent().text()).replace(/\s+/g, " ").trim().slice(0, 100),
+      };
+    });
+  const headings = $("h1, h2")
+    .toArray()
+    .slice(0, 8)
+    .map((el) => $(el).text().replace(/\s+/g, " ").trim().slice(0, 100))
+    .filter(Boolean);
 
   const origin = new URL(url);
   const internal = new Set<string>();
@@ -66,6 +86,7 @@ export function analyzePage(input: { url: string; status: number; html: string; 
   $("script, style, noscript, nav, footer").remove();
   const text = $("body").text().replace(/\s+/g, " ").trim();
   const words = text ? text.split(" ").length : 0;
+  const excerpt = text.slice(0, 700);
 
   if (status !== 200) issues.push(issue("status", "critical", 40, `The page answered with status ${status || "no response"}.`, "Make sure this page loads normally. Search engines drop pages that error."));
   if (!title) issues.push(issue("title_missing", "critical", 15, "The page has no title.", "Add a <title> of about 30 to 60 characters that says what the page is and includes your main keyword."));
@@ -89,7 +110,7 @@ export function analyzePage(input: { url: string; status: number; html: string; 
   if (bytes > 500_000) issues.push(issue("heavy", "info", 3, `The HTML alone is ${Math.round(bytes / 1000)} KB.`, "Trim inline scripts and styles, or split the page."));
 
   const score = Math.max(0, 100 - issues.reduce((sum, i) => sum + i.points, 0));
-  return { url, status, title, description, h1, words, images: images.length, imagesWithoutAlt, internalLinks: [...internal], ms, score, issues };
+  return { url, status, title, description, h1, words, images: images.length, imagesWithoutAlt, internalLinks: [...internal], ms, score, issues, excerpt, headings, missingAlt };
 }
 
 export interface SiteReport {
