@@ -161,6 +161,30 @@ describe("lead list and forms", () => {
     assert.equal(Object.keys(second.customFields).length, 12);
   });
 
+  it("lets the owner switch on a contact button and form auto-capture without any placeholder", async () => {
+    const { token, siteKey, siteId } = await api.signup("nodiv");
+    const off = (await api.call("GET", `/api/public/widget-config?siteKey=${siteKey}`)).body.form;
+    assert.deepEqual(off.button, { enabled: false, label: "Contact us", position: "right" });
+    assert.equal(off.autoCapture, false);
+
+    const saved = await api.call("PATCH", `/api/sites/${siteId}/settings`, {
+      token,
+      body: { settings: { formButton: { enabled: true, label: "  Get   a quote  ", position: "left", junk: 1 }, autoCapture: true } },
+    });
+    assert.deepEqual(saved.body.site.settings.formButton, { enabled: true, label: "Get a quote", position: "left" });
+    assert.equal(saved.body.site.settings.autoCapture, true);
+
+    const on = (await api.call("GET", `/api/public/widget-config?siteKey=${siteKey}`)).body.form;
+    assert.deepEqual(on.button, { enabled: true, label: "Get a quote", position: "left" });
+    assert.equal(on.autoCapture, true);
+
+    await api.call("PATCH", `/api/sites/${siteId}/settings`, { token, body: { settings: { formButton: { enabled: "yes", label: "x".repeat(80) }, autoCapture: "true" } } });
+    const clean = (await api.call("GET", `/api/public/widget-config?siteKey=${siteKey}`)).body.form;
+    assert.equal(clean.button.enabled, false);
+    assert.equal(clean.button.label.length, 30);
+    assert.equal(clean.autoCapture, false);
+  });
+
   it("keeps chat and blog for paying accounts only, while forms stay free", async () => {
     const { token, siteKey } = await api.signup("gate");
     const blocked = await api.call("POST", "/api/blog", { token, body: { title: "Nope", content: "x" } });

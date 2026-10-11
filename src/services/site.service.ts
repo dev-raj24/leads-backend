@@ -154,3 +154,15 @@ export function newPublicSlug(businessName: string): string {
   const base = businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "site";
   return `${base}-${Math.random().toString(16).slice(2, 6)}`;
 }
+
+export interface FormButton {
+  enabled: boolean;
+  label: string;
+  position: "left" | "right";
+}
+
+export function normalizeFormButton(raw: unknown): FormButton {
+  const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const label = typeof r.label === "string" ? r.label.replace(/\s+/g, " ").trim().slice(0, 30) : "";
+  return { enabled: r.enabled === true, label: label || "Contact us", position: r.position === "left" ? "left" : "right" };
+}

@@ -28,6 +28,8 @@ export const updateSettings = asyncHandler(async (req: Request, res: Response) =
     if (tenant.plan !== "pro") settings.autofollow = false;
   }
 
+  if ("formButton" in settings) settings.formButton = siteService.normalizeFormButton(settings.formButton);
+  if ("autoCapture" in settings) settings.autoCapture = settings.autoCapture === true;
   if ("leadFields" in settings) settings.leadFields = siteService.normalizeLeadFields(settings.leadFields);
   if ("formConsent" in settings) settings.formConsent = typeof settings.formConsent === "string" ? settings.formConsent.trim().slice(0, 200) : "";
   if ("allowedDomains" in settings) settings.allowedDomains = siteService.normalizeDomainList(settings.allowedDomains);

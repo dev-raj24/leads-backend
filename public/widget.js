@@ -93,6 +93,10 @@
     ".lw-formcard{display:grid;gap:12px;max-width:460px;font-size:15px;line-height:1.4}" +
     ".lw-formcard h3{margin:0;font-size:20px}" +
     ".lw-consent{font-size:12px;opacity:.7}" +
+    ".lw-contact-btn{position:fixed;bottom:20px;z-index:2147483000;background:var(--lw-accent);color:var(--lw-on-accent);border:0;border-radius:999px;padding:12px 20px;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.2)}" +
+    ".lw-contact-btn.lw-right{right:20px}.lw-contact-btn.lw-left{left:20px}.lw-contact-btn.lw-stacked{bottom:88px}" +
+    ".lw-contact-overlay{position:fixed;inset:0;z-index:2147483001;background:rgba(16,21,28,.45);display:grid;place-items:center;padding:16px}" +
+    ".lw-contact-card{position:relative;background:#fff;color:#16301f;border-radius:18px;padding:26px 22px;width:100%;max-width:440px;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}" +
     ".lw-formcard label{display:grid;gap:4px;font-size:13px;font-weight:600}" +
     ".lw-formcard textarea.lw-input{min-height:84px;resize:vertical;font:inherit}" +
     ".lw-formcard .lw-input{font-weight:400}" +
@@ -380,6 +384,11 @@
       formConfig = data.form || { fields: [] };
       if (data.offer) showOffer(data.offer, chatSide);
       if (chatOn) renderChat(data.chat.design || {}, false);
+      if (formConfig.button && formConfig.button.enabled) {
+        whenReady(function () {
+          renderContactButton(formConfig.button, chatSide);
+        });
+      }
       configReady = true;
       whenReady(scan);
     })
@@ -860,7 +869,7 @@
 
   // ------------------------------------------------------------------ form
   // <div data-leadworks-form></div> — the enquiry form, with the fields the owner chose in Settings.
-  var formConfig = { fields: [] };
+  var formConfig = { fields: [], consent: "", button: { enabled: false }, autoCapture: false };
 
   function mountForm() {
     var nodes = document.querySelectorAll("[data-leadworks-form]");
@@ -975,6 +984,52 @@
     };
   }
 
+  // ------------------------------------------------------------------ contact button (no placeholder needed)
+  var contactButton = null;
+
+  function renderContactButton(cfg, chatSide) {
+    if (contactButton || PREVIEW) return;
+    var side = chatSide || (cfg.position === "left" ? "left" : "right");
+    var m = mount(null, { fontFamily: "system" }, "");
+    contactButton = m.host;
+    var accent = resolveBrand("auto");
+    m.root.style.setProperty("--lw-accent", accent);
+    m.root.style.setProperty("--lw-on-accent", readableOn(accent));
+
+    var btn = el("button", "lw-contact-btn lw-" + side + (chatSide ? " lw-stacked" : ""), cfg.label || "Contact us");
+    btn.type = "button";
+    m.root.appendChild(btn);
+
+    var overlay = null;
+    function close() {
+      if (overlay) overlay.remove();
+      overlay = null;
+    }
+    btn.onclick = function () {
+      if (overlay) return;
+      overlay = el("div", "lw-contact-overlay");
+      var card = el("div", "lw-contact-card");
+      var x = el("button", "lw-modal-close", "\u00d7");
+      x.type = "button";
+      x.setAttribute("aria-label", "Close");
+      x.onclick = close;
+      var body = el("div", "");
+      card.appendChild(x);
+      card.appendChild(body);
+      overlay.appendChild(card);
+      overlay.onclick = function (e) {
+        if (e.target === overlay) close();
+      };
+      m.root.appendChild(overlay);
+      var fake = {
+        getAttribute: function (name) {
+          return name === "data-title" ? cfg.label || "Contact us" : null;
+        },
+      };
+      drawForm(body, fake);
+    };
+  }
+
   // ------------------------------------------------------------------ capture an existing form
   // <form data-leadworks-capture> — the site keeps its own form and design; we read it on submit and send it to the inbox.
   var NAME_KEY = /(^|\b)(full\s*)?(first\s*)?name\b/i;
@@ -1053,10 +1108,14 @@
 
   function onFormSubmit(e) {
     var form = e.target;
-    if (PREVIEW || !form || !form.hasAttribute || !form.hasAttribute("data-leadworks-capture")) return;
-    if (form.querySelector("input[type=password]")) return;
+    if (PREVIEW || !form || form.tagName !== "FORM" || form.hasAttribute("data-leadworks-ignore")) return;
+    if (!form.hasAttribute("data-leadworks-capture") && !formConfig.autoCapture) return;
+    if (form.querySelector("input[type=password], input[autocomplete^=cc-]")) return;
+    var hint = (form.getAttribute("role") || "") + " " + (form.getAttribute("id") || "") + " " + (form.getAttribute("name") || "") + " " + (form.getAttribute("action") || "");
+    if (!form.hasAttribute("data-leadworks-capture") && /search|login|log-in|signin|sign-in|signup|checkout|payment/i.test(hint)) return;
     var data = readForm(form);
     if (!validContact(data.contact)) return;
+    if (!form.hasAttribute("data-leadworks-capture") && !data.name && !data.message && Object.keys(data.extras).length === 0) return;
     fetch(API + "/api/ingest/lead", {
       method: "POST",
       headers: { "content-type": "application/json" },
