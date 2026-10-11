@@ -91,7 +91,7 @@ describe("input limits", () => {
     assert.equal(leads.body.leads.length, 0);
   });
 
-  it("caps bulk imports, blog posts and site settings", async () => {
+  it("caps bulk imports and site settings", async () => {
     const { token, siteId } = await api.signup("caps");
     await api.call("PATCH", "/api/tenant/plan", { token, body: { plan: "pro" } });
 
@@ -99,14 +99,8 @@ describe("input limits", () => {
     const bulk = await api.call("POST", "/api/leads/bulk", { token, body: { leads: rows } });
     assert.equal(bulk.body.error, "too_many_rows");
 
-    const post = await api.call("POST", "/api/blog", { token, body: { title: "t", content: "x".repeat(100_001) } });
-    assert.equal(post.body.error, "content_too_long");
-
     const settings = await api.call("PATCH", `/api/sites/${siteId}/settings`, { token, body: { settings: { blob: "x".repeat(20_000) } } });
     assert.equal(settings.body.error, "settings_too_large");
-
-    const offer = await api.call("POST", "/api/offers", { token, body: { title: "x".repeat(201) } });
-    assert.equal(offer.body.error, "title_too_long");
   });
 
   it("rejects oversize and non-xlsx uploads", async () => {

@@ -12,7 +12,6 @@ export interface FixItem {
   where: string;
   value: string;
   note?: string;
-  data?: Record<string, unknown>;
 }
 
 export interface FixPack {
@@ -105,11 +104,11 @@ export async function buildFixPack(tenantId: string, page: PageReport): Promise<
 
   if (need.title && ai?.title) {
     const title = clip(ai.title, 60);
-    items.push({ id: "title", label: "Page title", kind: "html", where: "In <head>, replace the existing <title> tag.", value: `<title>${title.replace(/</g, "&lt;")}</title>`, note: `${title.length} characters.`, data: { title } });
+    items.push({ id: "title", label: "Page title", kind: "html", where: "In <head>, replace the existing <title> tag.", value: `<title>${title.replace(/</g, "&lt;")}</title>`, note: `${title.length} characters.` });
   }
   if (need.description && ai?.description) {
     const description = clip(ai.description, 160);
-    items.push({ id: "description", label: "Meta description", kind: "html", where: "In <head>, add or replace the description tag.", value: `<meta name="description" content="${attr(description)}">`, note: `${description.length} characters.`, data: { description } });
+    items.push({ id: "description", label: "Meta description", kind: "html", where: "In <head>, add or replace the description tag.", value: `<meta name="description" content="${attr(description)}">`, note: `${description.length} characters.` });
   }
   if (need.h1 && ai?.h1) {
     items.push({ id: "h1", label: "Main heading", kind: "html", where: "Near the top of the page body.", value: `<h1>${clip(ai.h1, 90).replace(/</g, "&lt;")}</h1>` });
@@ -121,10 +120,10 @@ export async function buildFixPack(tenantId: string, page: PageReport): Promise<
     items.push({ id: "viewport", label: "Mobile viewport", kind: "html", where: "In <head>.", value: '<meta name="viewport" content="width=device-width, initial-scale=1">' });
   }
   if (has(page, "canonical")) {
-    items.push({ id: "canonical", label: "Canonical link", kind: "html", where: "In <head>.", value: `<link rel="canonical" href="${attr(page.url)}">`, data: { canonical: page.url } });
+    items.push({ id: "canonical", label: "Canonical link", kind: "html", where: "In <head>.", value: `<link rel="canonical" href="${attr(page.url)}">` });
   }
   if (has(page, "lang")) {
-    items.push({ id: "lang", label: "Page language", kind: "html", where: "On the opening <html> tag.", value: '<html lang="en">', note: "Use your own language code if the page is not in English.", data: { lang: "en" } });
+    items.push({ id: "lang", label: "Page language", kind: "html", where: "On the opening <html> tag.", value: '<html lang="en">', note: "Use your own language code if the page is not in English." });
   }
   if (has(page, "noindex")) {
     items.push({ id: "noindex", label: "Page is hidden from Google", kind: "steps", where: "In <head>.", value: 'Remove the tag <meta name="robots" content="noindex"> (or the noindex part of it) if you want this page to show in search.' });
@@ -161,8 +160,7 @@ export async function buildFixPack(tenantId: string, page: PageReport): Promise<
       kind: "html",
       where: "Anywhere in <head> or at the end of <body>.",
       value: `<script type="application/ld+json">\n${jsonForHtml(data)}\n</script>`,
-      note: "Add your telephone and address inside this block before publishing. Only add what is true.",
-      data: { jsonLd: data },
+      note: "Add your telephone and address inside this block before publishing. Only add what is true."
     });
   }
   if (need.alts && Array.isArray(ai?.alts)) {
@@ -174,8 +172,7 @@ export async function buildFixPack(tenantId: string, page: PageReport): Promise<
         kind: "text",
         where: "Put each text in the alt attribute of the image shown on the left.",
         value: lines.join("\n"),
-        note: "We cannot see the pictures. Check each one matches before you use it.",
-        data: { alts: page.missingAlt.map((img, i) => ({ src: img.src, alt: clip(String(ai!.alts![i] ?? ""), 120) })).filter((a) => a.alt) },
+        note: "We cannot see the pictures. Check each one matches before you use it."
       });
     }
   }

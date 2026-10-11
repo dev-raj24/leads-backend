@@ -23,12 +23,12 @@ const MAX_BULK_ROWS = 1000;
 const isLeadStatus = (v: unknown): v is LeadStatus =>
   typeof v === "string" && (LEAD_STATUSES as readonly string[]).includes(v);
 
-// Widget/form embeds identify themselves — anything unrecognized (or missing,
+// Callers identify their origin — anything unrecognized (or missing,
 // e.g. a bare API integration) safely falls back to "form".
 const isIngestSource = (v: unknown): v is (typeof LEAD_SOURCES)[number] =>
   typeof v === "string" && (LEAD_SOURCES as readonly string[]).includes(v);
 
-/** POST /api/ingest/lead — public, called by the site widget/form with a site key. */
+/** POST /api/ingest/lead — public, called by a website's own form with a site key. */
 export const ingest = asyncHandler(async (req: Request, res: Response) => {
   const body = req.body ?? {};
   const siteKey = body.site_key ?? body.siteKey;
@@ -44,7 +44,6 @@ export const ingest = asyncHandler(async (req: Request, res: Response) => {
     name: limitLength(optionalString(body.name), 120, "name_too_long"),
     message: limitLength(optionalString(body.message), 2000, "message_too_long"),
     source: isIngestSource(body.source) ? body.source : undefined,
-    fields: body.fields && typeof body.fields === "object" && !Array.isArray(body.fields) ? body.fields : undefined,
     extras: body.extras && typeof body.extras === "object" && !Array.isArray(body.extras) ? body.extras : undefined,
   });
   if (duplicate) return res.status(201).json({ ok: true, id: lead.id, reply: null, duplicate: true });
@@ -85,13 +84,9 @@ export const updateStatus = asyncHandler(async (req: Request, res: Response) => 
   res.json({ lead });
 });
 
-/** GET /api/leads/template — xlsx with the tenant's custom lead fields as extra columns. */
+/** GET /api/leads/template — xlsx import template. */
 export const downloadTemplate = asyncHandler(async (req: Request, res: Response) => {
-  const site = await siteService.getPrimarySiteForTenant(req.tenantId!);
-  const leadFields = site?.settings?.leadFields;
-  const extraFields = Array.isArray(leadFields)
-    ? leadFields.map((f: { name?: unknown }) => String(f?.name ?? "")).filter(Boolean)
-    : [];
+  const extraFields: string[] = [];
 
   const buffer = await leadImportService.buildTemplate(extraFields);
   res.setHeader("Content-Disposition", 'attachment; filename="leads_template.xlsx"');

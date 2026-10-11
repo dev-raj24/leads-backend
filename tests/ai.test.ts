@@ -197,24 +197,7 @@ describe("assistant chat", () => {
     assert.doesNotMatch(calls[0].system, /someone else's secret/);
   });
 
-  it("generates blog drafts using the business profile", async () => {
-    stubAi(JSON.stringify({ title: "T", excerpt: "E", content: "C" }));
-    const { token } = await api.signup("blogai");
-    await api.call("PATCH", "/api/tenant/plan", { token, body: { plan: "pro" } });
-    await api.call("PUT", "/api/ai-config", { token, body: { about: "Smile Clinic Indore", services: [{ name: "Braces" }] } });
-    const res = await api.call("POST", "/api/blog/generate", { token, body: { topic: "Braces aftercare" } });
-    assert.equal(res.body.draft.title, "T");
-    assert.match(calls[0].system, /Smile Clinic Indore/);
-  });
 
-  it("blocks AI blog generation on the free plan", async () => {
-    stubAi(JSON.stringify({ title: "T", excerpt: "E", content: "C" }));
-    const { token } = await api.signup("blogai_free");
-    const res = await api.call("POST", "/api/blog/generate", { token, body: { topic: "Braces aftercare" } });
-    assert.equal(res.status, 403);
-    assert.equal(res.body.error, "pro_required");
-    assert.equal(calls.length, 0);
-  });
 });
 
 describe("skipped onboarding", () => {

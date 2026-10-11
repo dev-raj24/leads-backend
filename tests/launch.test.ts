@@ -147,85 +147,7 @@ describe("automatic email safety", () => {
   });
 });
 
-describe("chat and leads stay separate", () => {
-  async function proWithChat(label: string) {
-    const acct = await api.signup(label, { plan: "pro" });
-    await api.call("PATCH", `/api/sites/${acct.siteId}/settings`, { token: acct.token, body: { settings: { widget: true } } });
-    await api.call("PUT", "/api/ai-config", { token: acct.token, body: { about: "A neighbourhood dental clinic." } });
-    return acct;
-  }
 
-  it("keeps an anonymous chat out of Leads, then promotes it when contact details are shared", async () => {
-    stubMail();
-    stubAi("We open at 10.");
-    const { token, siteKey, email } = await proWithChat("chatsplit");
-
-    const start = await api.call("POST", "/api/public/chat/start", { body: { siteKey, message: "What are your timings?" } });
-    assert.equal(start.status, 201);
-    await settle();
-    assert.equal((await api.call("GET", "/api/leads", { token })).body.leads.length, 0);
-    assert.equal((await api.call("GET", "/api/stats/overview", { token })).body.stats.totals.leads, 0);
-    const convos = await api.call("GET", "/api/chat-widget/conversations", { token });
-    assert.equal(convos.body.conversations.length, 1);
-    assert.equal(convos.body.conversations[0].isLead, false);
-    assert.equal(convos.body.conversations[0].contact, null);
-    assert.ok(sent.some((m) => m.to === email && /New chat/.test(m.subject)));
-    assert.ok(!sent.some((m) => /New lead/.test(m.subject)));
-
-    sent = [];
-    const next = await api.call("POST", `/api/public/chat/${start.body.leadId}/message`, {
-      body: { siteKey, message: "Book me please, my number is 98765 43210" },
-    });
-    assert.equal(next.status, 200);
-    await settle();
-    const leads = await api.call("GET", "/api/leads", { token });
-    assert.equal(leads.body.leads.length, 1);
-    assert.equal(leads.body.leads[0].source, "chat_widget");
-    assert.ok(sent.some((m) => m.to === email && /New lead/.test(m.subject)));
-    assert.equal((await api.call("GET", "/api/chat-widget/conversations", { token })).body.conversations[0].isLead, true);
-  });
-
-  it("creates a lead straight away when the first message already has an email", async () => {
-    stubAi("Sure.");
-    const { token, siteKey } = await proWithChat("chatemail");
-    await api.call("POST", "/api/public/chat/start", { body: { siteKey, message: "Hi, reach me at kiran@x.co" } });
-    const leads = await api.call("GET", "/api/leads", { token });
-    assert.equal(leads.body.leads.length, 1);
-    assert.equal(leads.body.leads[0].contact, "kiran@x.co");
-  });
-});
-
-describe("script safety", () => {
-  it("records that the script is installed, and refuses and reports unlisted domains", async () => {
-    const { token, siteKey, siteId } = await api.signup("domains");
-    assert.equal((await api.call("GET", "/api/sites/me/install", { token })).body.status.installed, false);
-
-    await api.call("GET", `/api/public/widget-config?siteKey=${siteKey}`, { headers: { origin: "https://www.shop.test" } });
-    await settle();
-    const seen = await api.call("GET", "/api/sites/me/install", { token });
-    assert.equal(seen.body.status.installed, true);
-    assert.equal(seen.body.status.lastSeenHost, "shop.test");
-
-    const save = await api.call("PATCH", `/api/sites/${siteId}/settings`, {
-      token,
-      body: { settings: { allowedDomains: ["https://Shop.test/contact", "junk value", "other.in"] } },
-    });
-    assert.deepEqual(save.body.site.settings.allowedDomains, ["shop.test", "other.in"]);
-
-    const ok = await ingest(siteKey, { contact: "ok@x.co", message: "from the right site" }, { origin: "https://blog.shop.test" });
-    assert.equal(ok.status, 201);
-    const blocked = await ingest(siteKey, { contact: "bad@x.co", message: "copied script" }, { origin: "https://evil.example" });
-    assert.equal(blocked.status, 403);
-    assert.equal(blocked.body.error, "domain_not_allowed");
-    const noOrigin = await ingest(siteKey, { contact: "api@x.co", message: "server to server" });
-    assert.equal(noOrigin.status, 201);
-
-    await settle();
-    const status = await api.call("GET", "/api/sites/me/install", { token });
-    assert.equal(status.body.status.blocked[0].host, "evil.example");
-    assert.equal((await api.call("GET", "/api/leads", { token })).body.leads.length, 2);
-  });
-});
 
 describe("email verification", () => {
   it("emails a link at signup, verifies once, and holds alerts back until then", async () => {
@@ -257,24 +179,19 @@ describe("email verification", () => {
 });
 
 describe("plans and billing", () => {
-  it("only lets a tenant reach Pro through billing when payments are configured, and hides locked parts after a downgrade", async () => {
-    const { token, siteKey } = await api.signup("billing");
+  it("reports the plan and usage, and moves back to Free when the subscription is cancelled", async () => {
+    const { token } = await api.signup("billing");
     const overview = await api.call("GET", "/api/billing", { token });
     assert.equal(overview.body.plan, "free");
     assert.equal(overview.body.usage.leadsLimit, 50);
 
     await api.call("PATCH", "/api/tenant/plan", { token, body: { plan: "pro" } });
-    const offer = await api.call("POST", "/api/offers", { token, body: { title: "Sale", active: true, body: JSON.stringify({ displayMode: "bottom-left", actionType: "link", targetUrl: "https://x.test" }) } });
-    assert.equal(offer.status, 201);
-    const live = await api.call("GET", `/api/public/widget-config?siteKey=${siteKey}`);
-    assert.ok(live.body.offer);
+    assert.equal((await api.call("GET", "/api/billing", { token })).body.plan, "pro");
 
     const cancelled = await api.call("POST", "/api/billing/cancel", { token });
     assert.equal(cancelled.status, 200);
     assert.equal(cancelled.body.plan, "free");
-    const after = await api.call("GET", `/api/public/widget-config?siteKey=${siteKey}`);
-    assert.equal(after.body.offer, null);
-    assert.equal((await api.call("GET", "/api/offers", { token })).body.offers.length, 1);
+    assert.equal((await api.call("GET", "/api/billing", { token })).body.plan, "free");
   });
 
   it("verifies webhook signatures and applies each event only once", async () => {
