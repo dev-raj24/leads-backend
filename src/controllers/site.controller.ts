@@ -29,20 +29,31 @@ export const updateSettings = asyncHandler(async (req: Request, res: Response) =
     if (tenant.plan !== "pro") settings.autofollow = false;
   }
 
+  if ("formButton" in settings) settings.formButton = siteService.normalizeFormButton(settings.formButton);
+  if ("autoCapture" in settings) settings.autoCapture = settings.autoCapture === true;
   if ("leadFields" in settings) settings.leadFields = siteService.normalizeLeadFields(settings.leadFields);
   if ("formConsent" in settings) settings.formConsent = typeof settings.formConsent === "string" ? settings.formConsent.trim().slice(0, 200) : "";
+  if ("allowedDomains" in settings) settings.allowedDomains = siteService.normalizeDomainList(settings.allowedDomains);
 
   const site = await siteService.updateSiteSettings(req.tenantId!, req.params.id, settings);
   if (!site) throw notFound();
   res.json({ site });
 });
 
-/** POST /api/sites/me/inspect — { url } — reads the owner's live website and drafts the business profile from it. */
+/** GET /api/sites/me/install — has the script ever phoned home, and who was turned away. */
+export const installStatus = asyncHandler(async (req: Request, res: Response) => {
+  const site = await siteService.getPrimarySiteForTenant(req.tenantId!);
+  if (!site) throw notFound();
+  const status = await siteService.getInstallStatus(req.tenantId!, site.id);
+  res.json({ status, allowedDomains: siteService.normalizeDomainList(site.settings.allowedDomains) });
+});
+
+/** POST /api/sites/me/inspect — { url } — reads the owner's live website: is the script on it, and what could the business profile say. */
 export const inspect = asyncHandler(async (req: Request, res: Response) => {
   const url = req.body?.url;
   if (!isNonEmptyString(url)) throw badRequest("missing_url");
   limitLength(url, 300, "url_too_long");
   const [site, tenant] = await Promise.all([siteService.getPrimarySiteForTenant(req.tenantId!), getTenant(req.tenantId!)]);
   if (!site) throw notFound();
-  res.json({ inspection: await inspectWebsite({ url, businessName: tenant.name, pro: tenant.plan === "pro" }) });
+  res.json({ inspection: await inspectWebsite({ url, siteKey: site.apiKey, businessName: tenant.name, pro: tenant.plan === "pro" }) });
 });

@@ -12,7 +12,7 @@ const upload = multer({
 });
 export const leadRoutes = Router();
 
-// Public — a client site's own form posts here with a site_key, no login.
+// Public — a client site's widget/form posts here with a site_key, no login.
 leadRoutes.post("/ingest/lead", limits.ingest, leadController.ingest);
 
 // Owner-portal routes — require a signed-in session (JWT).

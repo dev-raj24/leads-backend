@@ -54,9 +54,75 @@ export async function updateSiteSettings(
   return rows[0] ? toSite(rows[0]) : null;
 }
 
-export function newPublicSlug(businessName: string): string {
-  const base = businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "site";
-  return `${base}-${Math.random().toString(16).slice(2, 6)}`;
+const SEEN_THROTTLE_MS = 60_000;
+const lastSeenWrite = new Map<string, number>();
+
+export function normalizeHost(value: string): string {
+  const withoutScheme = value.trim().toLowerCase().replace(/^[a-z]+:\/\//, "");
+  return withoutScheme.split(/[/?#:]/)[0].replace(/^www\./, "");
+}
+
+export function normalizeDomainList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const hosts = raw
+    .filter((v): v is string => typeof v === "string")
+    .map(normalizeHost)
+    .filter((h) => /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(h) && h.length <= 120);
+  return Array.from(new Set(hosts)).slice(0, 20);
+}
+
+export function isHostAllowed(settings: Record<string, unknown>, host: string): boolean {
+  const list = normalizeDomainList(settings.allowedDomains);
+  if (list.length === 0) return true;
+  const h = normalizeHost(host);
+  return list.some((d) => h === d || h.endsWith(`.${d}`));
+}
+
+export async function recordSeen(siteId: string, host: string): Promise<void> {
+  const cacheKey = `${siteId}:${host}`;
+  const now = Date.now();
+  if (now - (lastSeenWrite.get(cacheKey) ?? 0) < SEEN_THROTTLE_MS) return;
+  lastSeenWrite.set(cacheKey, now);
+  await query(`update sites set last_seen_at = now(), last_seen_host = $2 where id = $1`, [siteId, host]);
+}
+
+export async function recordBlocked(siteId: string, host: string, kind: string): Promise<void> {
+  await query(
+    `insert into blocked_events (site_id, host, kind)
+     select $1, $2, $3
+     where not exists (
+       select 1 from blocked_events where site_id = $1 and host = $2 and kind = $3 and created_at > now() - interval '10 minutes'
+     )`,
+    [siteId, host, kind]
+  );
+}
+
+export interface InstallStatus {
+  installed: boolean;
+  lastSeenAt: string | null;
+  lastSeenHost: string | null;
+  blocked: Array<{ host: string; kind: string; lastAt: string; count: number }>;
+}
+
+export async function getInstallStatus(tenantId: string, siteId: string): Promise<InstallStatus | null> {
+  const sites = await query<{ last_seen_at: string | null; last_seen_host: string | null }>(
+    `select last_seen_at, last_seen_host from sites where id = $2 and tenant_id = $1`,
+    [tenantId, siteId]
+  );
+  if (!sites[0]) return null;
+  const blocked = await query<{ host: string; kind: string; last_at: string; count: number }>(
+    `select host, kind, max(created_at) as last_at, count(*)::int as count
+     from blocked_events where site_id = $1 and created_at > now() - interval '14 days'
+     group by host, kind order by max(created_at) desc limit 10`,
+    [siteId]
+  );
+  const seen = sites[0].last_seen_at;
+  return {
+    installed: Boolean(seen),
+    lastSeenAt: seen,
+    lastSeenHost: sites[0].last_seen_host,
+    blocked: blocked.map((b) => ({ host: b.host, kind: b.kind, lastAt: b.last_at, count: b.count })),
+  };
 }
 
 export interface LeadField {
@@ -82,4 +148,21 @@ export function normalizeLeadFields(raw: unknown): LeadField[] {
     if (out.length >= 12) break;
   }
   return out;
+}
+
+export function newPublicSlug(businessName: string): string {
+  const base = businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "site";
+  return `${base}-${Math.random().toString(16).slice(2, 6)}`;
+}
+
+export interface FormButton {
+  enabled: boolean;
+  label: string;
+  position: "left" | "right";
+}
+
+export function normalizeFormButton(raw: unknown): FormButton {
+  const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const label = typeof r.label === "string" ? r.label.replace(/\s+/g, " ").trim().slice(0, 30) : "";
+  return { enabled: r.enabled === true, label: label || "Contact us", position: r.position === "left" ? "left" : "right" };
 }

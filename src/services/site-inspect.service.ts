@@ -13,6 +13,8 @@ export interface InspectResult {
   url: string;
   reachable: boolean;
   status: number;
+  scriptFound: boolean;
+  keyMatches: boolean;
   jsRendered: boolean;
   pagesRead: number;
   draft: BusinessProfile | null;
@@ -68,12 +70,14 @@ function parseDraft(text: string): BusinessProfile | null {
   return profile.about || profile.timings || profile.faqs || services.length > 0 ? profile : null;
 }
 
-export async function inspectWebsite(input: { url: string; businessName: string; pro: boolean }): Promise<InspectResult> {
+export async function inspectWebsite(input: { url: string; siteKey: string; businessName: string; pro: boolean }): Promise<InspectResult> {
   const start = normalizeUrl(input.url);
   const result: InspectResult = {
     url: start.toString(),
     reachable: false,
     status: 0,
+    scriptFound: false,
+    keyMatches: false,
     jsRendered: false,
     pagesRead: 0,
     draft: null,
@@ -91,6 +95,8 @@ export async function inspectWebsite(input: { url: string; businessName: string;
   result.url = home.finalUrl;
 
   const html = home.body;
+  result.scriptFound = /\/widget\.js/i.test(html);
+  result.keyMatches = html.includes(input.siteKey);
 
   const first = pageText(html);
   result.jsRendered = first.text.split(" ").length < 40 && (html.match(/<script/gi)?.length ?? 0) >= 5;
