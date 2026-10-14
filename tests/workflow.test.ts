@@ -257,3 +257,55 @@ describe("heads-up, chat email, data rights, hosted form", () => {
 
 });
 
+describe("blog SEO and public pages", () => {
+  it("drafts SEO fields with the post and trims them to search-friendly lengths", async () => {
+    mock.method(gemini, "completeText", async () =>
+      JSON.stringify({ title: "Braces aftercare", excerpt: "Short.", content: "## Day one\n\nRest.", metaTitle: "x".repeat(90), metaDescription: "y".repeat(300) })
+    );
+    const { token } = await api.signup("seodraft", { plan: "pro" });
+    const res = await api.call("POST", "/api/blog/generate", { token, body: { topic: "Braces aftercare" } });
+    assert.ok(res.body.draft.metaTitle.length <= 60);
+    assert.ok(res.body.draft.metaDescription.length <= 160);
+    mock.restoreAll();
+    mock.method(gemini, "completeText", async () => JSON.stringify({ title: "Plain", content: "Body" }));
+    const plain = await api.call("POST", "/api/blog/generate", { token, body: { topic: "Plain" } });
+    assert.equal(plain.body.draft.metaTitle, "Plain");
+  });
+
+  it("serves published posts on public pages with SEO fields, and hides drafts and non-Pro blogs", async () => {
+    const { token, siteId } = await api.signup("seopages", { plan: "pro" });
+    const slug = (await api.call("GET", "/api/sites/me", { token })).body.site.publicSlug as string;
+    assert.match(slug, /^biz-seopages-[0-9a-f]{4}$/);
+
+    await api.call("POST", "/api/blog", { token, body: { title: "Draft", content: "hidden", status: "draft" } });
+    const custom = await api.call("POST", "/api/blog", {
+      token,
+      body: { title: "Root canal cost", content: "Long body text.\n\n## Costs\n\nMore.", excerpt: "What it costs.", status: "published", metaTitle: "Root canal cost in Indore", metaDescription: "A clear price guide." },
+    });
+    const bare = await api.call("POST", "/api/blog", { token, body: { title: "Whitening tips", content: "Whiten safely at home with these steps.", status: "published" } });
+    assert.equal(custom.status, 201);
+    assert.equal(bare.status, 201);
+
+    const index = await api.call("GET", `/api/public/blog-site/${slug}`);
+    assert.equal(index.body.site.businessName, "Biz seopages");
+    assert.deepEqual(index.body.site.posts.map((p: any) => p.title).sort(), ["Root canal cost", "Whitening tips"]);
+
+    const one = await api.call("GET", `/api/public/blog-site/${slug}/root-canal-cost`);
+    assert.equal(one.body.post.seoTitle, "Root canal cost in Indore");
+    assert.equal(one.body.post.seoDescription, "A clear price guide.");
+    const fallback = await api.call("GET", `/api/public/blog-site/${slug}/whitening-tips`);
+    assert.equal(fallback.body.post.seoTitle, "Whitening tips");
+    assert.match(fallback.body.post.seoDescription, /^Whiten safely at home/);
+    assert.equal((await api.call("GET", `/api/public/blog-site/${slug}/draft`)).status, 404);
+    assert.equal((await api.call("GET", `/api/public/blog-site/nope-0000`)).status, 404);
+
+    const edited = await api.call("PATCH", `/api/blog/${custom.body.post.id}`, { token, body: { metaTitle: "New SEO title" } });
+    assert.equal(edited.body.post.metaTitle, "New SEO title");
+    assert.equal((await api.call("POST", "/api/blog", { token, body: { title: "t", content: "c", metaTitle: "x".repeat(71) } })).body.error, "meta_title_too_long");
+
+    await api.call("POST", "/api/billing/cancel", { token });
+    assert.equal((await api.call("GET", `/api/public/blog-site/${slug}`)).status, 404);
+    assert.equal((await api.call("GET", `/api/public/blog-site/${slug}/root-canal-cost`)).status, 404);
+    assert.ok(siteId);
+  });
+});

@@ -7,6 +7,8 @@ export interface PlanDef {
   leadsPerMonth: number;
   features: {
     aiReply: boolean;
+    offers: boolean;
+    blog: boolean;
     autoFollowup: boolean;
   };
 }
@@ -17,14 +19,14 @@ export const PLAN_DEFS: Record<Plan, PlanDef> = {
     name: "Free",
     priceInr: 0,
     leadsPerMonth: 50,
-    features: { aiReply: false, autoFollowup: false },
+    features: { aiReply: false, offers: false, blog: false, autoFollowup: false },
   },
   pro: {
     id: "pro",
     name: "Pro",
     priceInr: 999,
     leadsPerMonth: 1000,
-    features: { aiReply: true, autoFollowup: true },
+    features: { aiReply: true, offers: true, blog: true, autoFollowup: true },
   },
 };
 
