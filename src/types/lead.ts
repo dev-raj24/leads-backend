@@ -29,5 +29,6 @@ export interface IngestLeadInput {
   message?: string;
   source?: LeadSource;
   customFields?: Record<string, unknown>;
+  fields?: Record<string, unknown>;
   extras?: Record<string, unknown>;
 }

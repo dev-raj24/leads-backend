@@ -7,6 +7,7 @@ import { blogRoutes } from "./blog.routes";
 import { chatRoutes } from "./chat.routes";
 import { customerRoutes } from "./customer.routes";
 import { followupRoutes } from "./followup.routes";
+import { formRoutes } from "./form.routes";
 import { inboundEmailRoutes } from "./inbound-email.routes";
 import { leadRoutes } from "./lead.routes";
 import { offerRoutes } from "./offer.routes";
@@ -16,6 +17,8 @@ import { siteRoutes } from "./site.routes";
 import { statsRoutes } from "./stats.routes";
 import { tenantRoutes } from "./tenant.routes";
 import { unsubscribeRoutes } from "./unsubscribe.routes";
+import { widgetChatRoutes } from "./widget-chat.routes";
+import { widgetRoutes } from "./widget.routes";
 
 export const apiRoutes = Router();
 
@@ -30,8 +33,11 @@ apiRoutes.use(chatRoutes);
 apiRoutes.use(blogRoutes);
 apiRoutes.use(statsRoutes);
 apiRoutes.use(tenantRoutes);
+apiRoutes.use(widgetRoutes);
 apiRoutes.use(unsubscribeRoutes);
 apiRoutes.use(billingRoutes);
 apiRoutes.use(inboundEmailRoutes);
+apiRoutes.use(formRoutes);
 apiRoutes.use(seoRoutes);
 apiRoutes.use(searchConsoleRoutes);
+apiRoutes.use(widgetChatRoutes);

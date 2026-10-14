@@ -45,6 +45,21 @@ export async function notifyOwnerOfNewLead(tenantId: string, settings: Record<st
   return deliver(tenantId, lead.id, `New lead: ${who}`, text, "lead");
 }
 
+export async function notifyOwnerOfNewChat(tenantId: string, settings: Record<string, unknown>, lead: Lead, firstMessage: string): Promise<boolean> {
+  if (settings.alerts === false) return false;
+
+  const who = lead.name ?? "A website visitor";
+  const text = [
+    `${who} started a chat on your website.`,
+    "",
+    `They said: ${clip(firstMessage, 500)}`,
+    "",
+    `Open the conversation: ${env.appUrl}/chats`,
+  ].join("\n");
+
+  return deliver(tenantId, lead.id, `New chat on your website`, text, "chat");
+}
+
 export async function notifyOwnerOfCustomerReply(tenantId: string, lead: Lead, body: string): Promise<boolean> {
   const who = lead.name ?? lead.contact;
   const text = [`${who} replied to your email.`, "", clip(body, 500), "", `Reply in Leadworks: ${env.appUrl}/leads/${lead.id}`].join("\n");

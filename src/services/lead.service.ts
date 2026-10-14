@@ -5,6 +5,7 @@
 import { query } from "../config/db";
 import { normalizeContact } from "../utils/contact";
 import { badRequest, InvalidSiteKeyError } from "../utils/errors";
+import { normalizeLeadFields } from "./site.service";
 import type { IngestLeadInput, Lead, LeadStatus } from "../types";
 
 interface SiteRow {
@@ -83,6 +84,21 @@ function sanitizeExtras(raw: Record<string, unknown>): Record<string, string> {
   return out;
 }
 
+function answersForConfiguredFields(settings: Record<string, unknown> | null, raw: Record<string, unknown>): Record<string, string> {
+  const answers: Record<string, string> = {};
+  for (const field of normalizeLeadFields(settings?.leadFields)) {
+    const given = raw[field.name];
+    const value = typeof given === "string" || typeof given === "number" ? String(given).trim().slice(0, 500) : "";
+    if (!value) {
+      if (field.required) throw badRequest("missing_field", `${field.name} is required.`);
+      continue;
+    }
+    if (field.options.length > 0 && !field.options.includes(value)) throw badRequest("invalid_field", `${field.name} has an invalid choice.`);
+    answers[field.name] = value;
+  }
+  return answers;
+}
+
 export async function createFromSite(input: IngestLeadInput & { qualified?: boolean }): Promise<IngestResult> {
   const sites = await query<SiteRow>(
     `select id, tenant_id, settings from sites where api_key = $1 limit 1`,
@@ -91,7 +107,7 @@ export async function createFromSite(input: IngestLeadInput & { qualified?: bool
   const site = sites[0];
   if (!site) throw new InvalidSiteKeyError();
 
-  const configured = input.customFields;
+  const configured = input.fields ? answersForConfiguredFields(site.settings, input.fields) : input.customFields;
   const extras = input.extras ? sanitizeExtras(input.extras) : {};
   const customFields = configured || Object.keys(extras).length ? { ...extras, ...(configured ?? {}) } : undefined;
 

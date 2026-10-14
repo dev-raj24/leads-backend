@@ -5,8 +5,10 @@ export interface PlanDef {
   name: string;
   priceInr: number;
   leadsPerMonth: number;
+  aiChatMessagesPerMonth: number;
   features: {
     aiReply: boolean;
+    chatWidget: boolean;
     offers: boolean;
     blog: boolean;
     autoFollowup: boolean;
@@ -19,14 +21,16 @@ export const PLAN_DEFS: Record<Plan, PlanDef> = {
     name: "Free",
     priceInr: 0,
     leadsPerMonth: 50,
-    features: { aiReply: false, offers: false, blog: false, autoFollowup: false },
+    aiChatMessagesPerMonth: 0,
+    features: { aiReply: false, chatWidget: false, offers: false, blog: false, autoFollowup: false },
   },
   pro: {
     id: "pro",
     name: "Pro",
     priceInr: 999,
     leadsPerMonth: 1000,
-    features: { aiReply: true, offers: true, blog: true, autoFollowup: true },
+    aiChatMessagesPerMonth: 2000,
+    features: { aiReply: true, chatWidget: true, offers: true, blog: true, autoFollowup: true },
   },
 };
 
