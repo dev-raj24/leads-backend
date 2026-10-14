@@ -236,3 +236,47 @@ describe("ready-to-paste fixes", () => {
   });
 });
 
+describe("apply fixes through the script", () => {
+  const aiJson = JSON.stringify({ title: "Dental clinic in Indore | Smile Studio", description: "Painless braces, whitening and check-ups for the whole family in Indore. Book a visit with Smile Studio this week.", h1: "Your family dentist", alts: ["Dentist checking a patient"], contentIdeas: ["Treatments", "Prices"] });
+
+  it("publishes the written fixes for a page to the site's script, per path, and takes them back", async () => {
+    const acct = await api.signup("apply", { plan: "pro" });
+    const started = await api.call("POST", "/api/seo/audits", { token: acct.token, body: { url: base } });
+    const audit = await waitFor(acct.token, started.body.audit.id);
+    const home = audit.result.pages.find((p: any) => new URL(p.url).pathname === "/");
+
+    const early = await api.call("POST", `/api/seo/audits/${audit.id}/apply`, { token: acct.token, body: { url: home.url } });
+    assert.equal(early.body.error, "fixes_not_written");
+
+    mock.method(gemini, "completeText", async () => aiJson);
+    await api.call("POST", `/api/seo/audits/${audit.id}/fixes`, { token: acct.token, body: { url: home.url } });
+    mock.restoreAll();
+
+    const applied = await api.call("POST", `/api/seo/audits/${audit.id}/apply`, { token: acct.token, body: { url: home.url } });
+    assert.equal(applied.status, 200);
+    assert.equal(applied.body.override.path, "/");
+    assert.equal(applied.body.override.data.title, "Dental clinic in Indore | Smile Studio");
+
+    const live = await api.call("GET", `/api/public/widget-config?siteKey=${acct.siteKey}&path=/`);
+    assert.equal(live.body.seo.title, "Dental clinic in Indore | Smile Studio");
+    assert.match(live.body.seo.description, /^Painless braces/);
+    assert.equal(live.body.seo.canonical, home.url);
+    assert.equal(live.body.seo.jsonLd["@type"], "LocalBusiness");
+    assert.deepEqual(live.body.seo.alts, [{ src: "a.png", alt: "Dentist checking a patient" }]);
+
+    assert.equal((await api.call("GET", `/api/public/widget-config?siteKey=${acct.siteKey}&path=/about`)).body.seo, null);
+    assert.equal((await api.call("GET", `/api/public/widget-config?siteKey=${acct.siteKey}`)).body.seo, null);
+    assert.equal((await api.call("GET", "/api/seo/overrides", { token: acct.token })).body.overrides.length, 1);
+
+    const other = await api.signup("apply_other", { plan: "pro" });
+    assert.equal((await api.call("POST", `/api/seo/audits/${audit.id}/apply`, { token: other.token, body: { url: home.url } })).status, 404);
+    assert.equal((await api.call("DELETE", "/api/seo/overrides", { token: other.token, body: { path: "/" } })).status, 404);
+
+    await api.call("POST", "/api/billing/cancel", { token: acct.token });
+    assert.equal((await api.call("GET", `/api/public/widget-config?siteKey=${acct.siteKey}&path=/`)).body.seo, null);
+    await api.call("PATCH", "/api/tenant/plan", { token: acct.token, body: { plan: "pro" } });
+
+    assert.equal((await api.call("DELETE", "/api/seo/overrides", { token: acct.token, body: { path: "/" } })).status, 200);
+    assert.equal((await api.call("GET", `/api/public/widget-config?siteKey=${acct.siteKey}&path=/`)).body.seo, null);
+  });
+});

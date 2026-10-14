@@ -33,7 +33,7 @@ Express + TypeScript + PostgreSQL.
 ## Environment
 
 Required: `DATABASE_URL`, `JWT_SECRET` (32+ characters in production).
-Optional: `GEMINI_API_KEY` enables AI replies, follow-up drafts, the assistant and SEO fixes. `SMTP_URL` enables alert and follow-up emails.
+Optional: `GEMINI_API_KEY` enables AI replies, chat and blog drafts. `SMTP_URL` enables alert and follow-up emails.
 
 ### Going live
 

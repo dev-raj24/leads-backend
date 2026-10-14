@@ -7,5 +7,6 @@ import * as siteController from "../controllers/site.controller";
 export const siteRoutes = Router();
 
 siteRoutes.get("/sites/me", requireAuth, siteController.getMine);
+siteRoutes.get("/sites/me/install", requireAuth, siteController.installStatus);
 siteRoutes.patch("/sites/:id/settings", requireAuth, siteController.updateSettings);
 siteRoutes.post("/sites/me/inspect", requireAuth, limits.ai, siteController.inspect);

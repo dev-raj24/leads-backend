@@ -2,6 +2,9 @@
 
 import type { Request, Response } from "express";
 import * as offerService from "../services/offer.service";
+import * as seoOverrides from "../services/seo-overrides.service";
+import { consentFor } from "./form.controller";
+import { normalizeFormButton, normalizeLeadFields } from "../services/site.service";
 import * as siteService from "../services/site.service";
 import { getTenant } from "../services/tenant.service";
 import { readChatDesign } from "../services/widget-design.service";
@@ -141,5 +144,12 @@ export const publicWidgetConfig = asyncHandler(async (req: Request, res: Respons
       design: readChatDesign(site.settings?.widgetDesign),
     },
     blog: { enabled: tenant.plan === "pro" },
+    seo: tenant.plan === "pro" && typeof req.query.path === "string" ? await seoOverrides.overrideForPublicPath(site.id, req.query.path) : null,
+    form: {
+      fields: normalizeLeadFields(site.settings?.leadFields),
+      consent: consentFor(site.settings),
+      button: normalizeFormButton(site.settings?.formButton),
+      autoCapture: site.settings?.autoCapture === true,
+    },
   });
 });

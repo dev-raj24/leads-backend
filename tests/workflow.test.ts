@@ -122,6 +122,27 @@ describe("lead list and forms", () => {
     assert.equal(row.nextFollowup.status, "pending");
   });
 
+  it("collects the owner's custom form fields, validates them, and publishes them to the script", async () => {
+    const { token, siteKey, siteId } = await api.signup("formfields");
+    const saved = await api.call("PATCH", `/api/sites/${siteId}/settings`, {
+      token,
+      body: { settings: { leadFields: [{ name: "Service", required: true, options: ["Braces", "Whitening", "Braces"] }, { name: "Budget" }, { name: "service" }] } },
+    });
+    assert.deepEqual(saved.body.site.settings.leadFields, [
+      { name: "Service", required: true, options: ["Braces", "Whitening"] },
+      { name: "Budget", required: false, options: [] },
+    ]);
+
+    const config = await api.call("GET", `/api/public/widget-config?siteKey=${siteKey}`);
+    assert.equal(config.body.form.fields.length, 2);
+
+    assert.equal((await ingest(siteKey, { contact: "f@x.co", message: "hi", fields: {} })).body.error, "missing_field");
+    assert.equal((await ingest(siteKey, { contact: "f@x.co", message: "hi", fields: { Service: "Surgery" } })).body.error, "invalid_field");
+    const ok = await ingest(siteKey, { contact: "f@x.co", message: "hi", fields: { Service: "Braces", Budget: "20000", Hacker: "x" } });
+    assert.equal(ok.status, 201);
+    const lead = (await api.call("GET", "/api/leads", { token })).body.leads[0];
+    assert.deepEqual(lead.customFields, { Service: "Braces", Budget: "20000" });
+  });
 
   it("stores the extra answers captured from a site's own form, minus anything sensitive", async () => {
     const { token, siteKey } = await api.signup("extras");
@@ -140,7 +161,46 @@ describe("lead list and forms", () => {
     assert.equal(Object.keys(second.customFields).length, 12);
   });
 
+  it("lets the owner switch on a contact button and form auto-capture without any placeholder", async () => {
+    const { token, siteKey, siteId } = await api.signup("nodiv");
+    const off = (await api.call("GET", `/api/public/widget-config?siteKey=${siteKey}`)).body.form;
+    assert.deepEqual(off.button, { enabled: false, label: "Contact us", position: "right" });
+    assert.equal(off.autoCapture, false);
 
+    const saved = await api.call("PATCH", `/api/sites/${siteId}/settings`, {
+      token,
+      body: { settings: { formButton: { enabled: true, label: "  Get   a quote  ", position: "left", junk: 1 }, autoCapture: true } },
+    });
+    assert.deepEqual(saved.body.site.settings.formButton, { enabled: true, label: "Get a quote", position: "left" });
+    assert.equal(saved.body.site.settings.autoCapture, true);
+
+    const on = (await api.call("GET", `/api/public/widget-config?siteKey=${siteKey}`)).body.form;
+    assert.deepEqual(on.button, { enabled: true, label: "Get a quote", position: "left" });
+    assert.equal(on.autoCapture, true);
+
+    await api.call("PATCH", `/api/sites/${siteId}/settings`, { token, body: { settings: { formButton: { enabled: "yes", label: "x".repeat(80) }, autoCapture: "true" } } });
+    const clean = (await api.call("GET", `/api/public/widget-config?siteKey=${siteKey}`)).body.form;
+    assert.equal(clean.button.enabled, false);
+    assert.equal(clean.button.label.length, 30);
+    assert.equal(clean.autoCapture, false);
+  });
+
+  it("keeps chat and blog for paying accounts only, while forms stay free", async () => {
+    const { token, siteKey } = await api.signup("gate");
+    const blocked = await api.call("POST", "/api/blog", { token, body: { title: "Nope", content: "x" } });
+    assert.equal(blocked.status, 403);
+    const config = await api.call("GET", `/api/public/widget-config?siteKey=${siteKey}`);
+    assert.equal(config.body.blog.enabled, false);
+    assert.equal(config.body.chat.enabled, false);
+    assert.equal((await ingest(siteKey, { contact: "free@x.co", message: "form works on free" })).status, 201);
+
+    await api.call("PATCH", "/api/tenant/plan", { token, body: { plan: "pro" } });
+    await api.call("POST", "/api/blog", { token, body: { title: "Live", content: "x", status: "published" } });
+    assert.equal((await api.call("GET", `/api/public/blog?siteKey=${siteKey}`)).body.posts.length, 1);
+    await api.call("POST", "/api/billing/cancel", { token });
+    assert.equal((await api.call("GET", `/api/public/blog?siteKey=${siteKey}`)).body.posts.length, 0);
+    assert.equal((await api.call("GET", `/api/public/widget-config?siteKey=${siteKey}`)).body.blog.enabled, false);
+  });
 });
 
 describe("account security", () => {
@@ -228,6 +288,28 @@ describe("heads-up, chat email, data rights, hosted form", () => {
     assert.equal(after.body.followups.find((f: any) => f.id === created.body.followup.id).status, "cancelled");
   });
 
+  it("emails a team chat reply to a visitor who has left the page, but not to one still reading", async () => {
+    stubMail();
+    mock.method(gemini, "completeText", async () => "Sure.");
+    const acct = await api.signup("chatmail", { plan: "pro" });
+    await api.call("PATCH", `/api/sites/${acct.siteId}/settings`, { token: acct.token, body: { settings: { widget: true } } });
+    await api.call("PUT", "/api/ai-config", { token: acct.token, body: { about: "A dental clinic in Pune." } });
+    const start = await api.call("POST", "/api/public/chat/start", { body: { siteKey: acct.siteKey, message: "Hi, reach me at chatter@x.co" } });
+    await settle();
+    sent = [];
+
+    await api.call("POST", `/api/chat-widget/conversations/${start.body.leadId}/reply`, { token: acct.token, body: { text: "We can see you at 5." } });
+    const mail = sent.find((m) => m.to === "chatter@x.co");
+    assert.ok(mail);
+    assert.match(mail.text, /We can see you at 5\./);
+    assert.match(mail.replyTo ?? "", /^reply\+/);
+
+    await api.call("GET", `/api/public/chat/${start.body.leadId}/messages?siteKey=${acct.siteKey}`);
+    await settle();
+    sent = [];
+    await api.call("POST", `/api/chat-widget/conversations/${start.body.leadId}/reply`, { token: acct.token, body: { text: "Anything else?" } });
+    assert.equal(sent.filter((m) => m.to === "chatter@x.co").length, 0);
+  });
 
   it("exports and erases one person's data and stops further automatic email to them", async () => {
     stubMail();
@@ -255,6 +337,20 @@ describe("heads-up, chat email, data rights, hosted form", () => {
     assert.equal(sent.filter((m) => m.to === "erase.me@x.co").length, 0);
   });
 
+  it("serves the hosted form page its fields and consent line, and lets owners change the line", async () => {
+    const { token, siteKey, siteId } = await api.signup("hosted");
+    await api.call("PATCH", `/api/sites/${siteId}/settings`, { token, body: { settings: { leadFields: [{ name: "Service" }] } } });
+    const page = await api.call("GET", `/api/public/form?siteKey=${siteKey}`);
+    assert.equal(page.body.businessName, "Biz hosted");
+    assert.equal(page.body.fields[0].name, "Service");
+    assert.match(page.body.consent, /reply to your enquiry/);
+    assert.equal(page.body.poweredBy, true);
+    assert.equal((await api.call("GET", "/api/public/form?siteKey=nope")).status, 404);
+
+    await api.call("PATCH", `/api/sites/${siteId}/settings`, { token, body: { settings: { leadFields: [], formConsent: "  We may call you about this enquiry only.  " } } });
+    assert.equal((await api.call("GET", `/api/public/form?siteKey=${siteKey}`)).body.consent, "We may call you about this enquiry only.");
+    assert.equal((await api.call("GET", `/api/public/widget-config?siteKey=${siteKey}`)).body.form.consent, "We may call you about this enquiry only.");
+  });
 });
 
 describe("blog SEO and public pages", () => {
