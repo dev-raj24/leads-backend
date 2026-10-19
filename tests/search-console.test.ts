@@ -141,6 +141,34 @@ describe("search console connection", () => {
     assert.equal((await api.call("GET", "/api/search-console/performance?days=5", { token: t.token })).body.error, "invalid_range");
   });
 
+  it("snapshots keyword positions once captured, and reports how they moved since", async () => {
+    const { captureRankSnapshot } = await import("../src/services/search-console.service");
+    const t = await connectedTenant("sc_trend");
+    await api.call("PUT", "/api/search-console/property", { token: t.token, body: { siteUrl: "sc-domain:smile.example" } });
+    const tenantRow = await pool!.query<{ tenant_id: string }>(`select tenant_id from users where email = $1`, [t.email]);
+    const tenantId = tenantRow.rows[0].tenant_id;
+
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    await pool!.query(
+      `insert into search_console_rank_history (tenant_id, property, captured_on, query, position, clicks, impressions) values ($1, $2, $3, $4, $5, $6, $7)`,
+      [tenantId, "sc-domain:smile.example", yesterday, "root canal cost indore", 14.2, 20, 500]
+    );
+
+    assert.equal((await api.call("GET", "/api/search-console/rankings/trend?days=5", { token: t.token })).body.error, "invalid_range");
+    assert.deepEqual((await api.call("GET", "/api/search-console/rankings/trend?days=30", { token: t.token })).body.keywords, []);
+
+    await captureRankSnapshot(tenantId);
+    const keywords = (await api.call("GET", "/api/search-console/rankings/trend?days=30", { token: t.token })).body.keywords;
+    const moved = keywords.find((k: any) => k.query === "root canal cost indore");
+    assert.ok(moved, "tracked keyword should appear once it has two days of history");
+    assert.equal(moved.points.length, 2);
+    assert.equal(moved.earliest, 14.2);
+    assert.equal(moved.latest, 9.6);
+    assert.equal(moved.change, 4.6);
+    // a query seen only once (no history yet) is not reported as "moving" either way.
+    assert.ok(!keywords.some((k: any) => k.query === "dentist near me"));
+  });
+
   it("disconnects and revokes at Google, and keeps tenants and plans separate", async () => {
     revokedTokens = [];
     const t = await connectedTenant("sc_disc");

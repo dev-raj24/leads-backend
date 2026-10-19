@@ -254,3 +254,79 @@ export async function getPerformance(tenantId: string, rangeDays: number, force:
 }
 
 export const clearAccessCacheForTests = () => accessCache.clear();
+
+// ---- keyword rank history -------------------------------------------------
+// getPerformance() only ever holds the latest fetch per (tenant, property, rangeDays).
+// To show how a keyword's position is moving over time we snapshot today's queries
+// into their own history table once a day (see jobs/index.ts).
+
+export interface TrendKeyword {
+  query: string;
+  points: Array<{ date: string; position: number; clicks: number; impressions: number }>;
+  earliest: number;
+  latest: number;
+  /** earliest position minus latest position: positive means it moved up (closer to #1). */
+  change: number;
+}
+
+export async function listTrackedTenants(): Promise<Array<{ tenantId: string; property: string }>> {
+  const rows = await query<{ tenant_id: string; property: string }>(
+    `select tenant_id, property from search_console_connections where property is not null and last_error is null`
+  );
+  return rows.map((r) => ({ tenantId: r.tenant_id, property: r.property }));
+}
+
+export async function captureRankSnapshot(tenantId: string): Promise<void> {
+  const conn = await getConnection(tenantId);
+  if (!conn || !conn.property) return;
+
+  let perf: Performance;
+  try {
+    perf = await getPerformance(tenantId, 28, false);
+  } catch (err) {
+    console.error("[search-console] rank snapshot skipped for", tenantId, err instanceof Error ? err.message : err);
+    return;
+  }
+
+  const today = iso(Date.now());
+  for (const q of perf.queries.slice(0, 50)) {
+    await query(
+      `insert into search_console_rank_history (tenant_id, property, captured_on, query, position, clicks, impressions)
+       values ($1, $2, $3, $4, $5, $6, $7)
+       on conflict (tenant_id, property, captured_on, query) do update
+         set position = excluded.position, clicks = excluded.clicks, impressions = excluded.impressions`,
+      [tenantId, conn.property, today, q.query, q.position, q.clicks, q.impressions]
+    );
+  }
+}
+
+export async function getRankTrend(tenantId: string, days: number): Promise<TrendKeyword[]> {
+  const conn = await getConnection(tenantId);
+  if (!conn || !conn.property) throw new AppError(409, "no_property_chosen");
+
+  const since = iso(Date.now() - days * DAY);
+  const rows = await query<{ captured_on: string; query: string; position: number; clicks: number; impressions: number }>(
+    `select captured_on, query, position, clicks, impressions from search_console_rank_history
+     where tenant_id = $1 and property = $2 and captured_on >= $3
+     order by query, captured_on`,
+    [tenantId, conn.property, since]
+  );
+
+  const byQuery = new Map<string, TrendKeyword["points"]>();
+  for (const r of rows) {
+    const list = byQuery.get(r.query) ?? [];
+    list.push({ date: r.captured_on, position: round(Number(r.position), 1), clicks: r.clicks, impressions: r.impressions });
+    byQuery.set(r.query, list);
+  }
+
+  return [...byQuery.entries()]
+    .filter(([, points]) => points.length >= 2)
+    .map(([q, points]) => ({
+      query: q,
+      points,
+      earliest: points[0].position,
+      latest: points[points.length - 1].position,
+      change: round(points[0].position - points[points.length - 1].position, 1),
+    }))
+    .sort((a, b) => b.change - a.change);
+}
