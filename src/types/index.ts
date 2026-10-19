@@ -8,5 +8,6 @@ export * from "./customer";
 export * from "./followup";
 export * from "./lead";
 export * from "./offer";
+export * from "./review";
 export * from "./site";
 export * from "./stats";

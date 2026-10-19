@@ -51,3 +51,10 @@ export const disconnect = asyncHandler(async (req: Request, res: Response) => {
   res.json({ status: await sc.getStatus(req.tenantId!) });
 });
 
+/** GET /api/search-console/rankings/trend?days=30 — how tracked keywords moved, day by day. */
+export const trend = asyncHandler(async (req: Request, res: Response) => {
+  const days = Number(req.query.days ?? 30);
+  if (![7, 30, 90].includes(days)) throw badRequest("invalid_range");
+  res.json({ keywords: await sc.getRankTrend(req.tenantId!, days) });
+});
+
