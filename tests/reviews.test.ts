@@ -99,7 +99,10 @@ describe("google reviews", () => {
     const locations = (await api.call("GET", "/api/reviews/locations", { token: t.token })).body.locations;
     assert.deepEqual(locations, [{ accountId: "111", locationId: "222", title: "Smile Dental, Indore" }]);
 
-    const chosen = await api.call("PUT", "/api/reviews/location", { token: t.token, body: { accountId: "111", locationId: "222", title: "Smile Dental, Indore" } });
+    const forged = await api.call("PUT", "/api/reviews/location", { token: t.token, body: { accountId: "999", locationId: "888" } });
+    assert.equal(forged.body.error, "unknown_location", "only a location Google's own account list returns may be chosen");
+
+    const chosen = await api.call("PUT", "/api/reviews/location", { token: t.token, body: { accountId: "111", locationId: "222" } });
     assert.equal(chosen.body.status.locationId, "222");
 
     const other = await api.signup("rv_other", { plan: "pro" });
@@ -108,7 +111,7 @@ describe("google reviews", () => {
 
   it("pulls in new reviews once per review (never re-drafting an old one), and posts an owner-approved reply to Google", async () => {
     const t = await connectedTenant("rv_sync");
-    await api.call("PUT", "/api/reviews/location", { token: t.token, body: { accountId: "111", locationId: "222", title: "Smile Dental, Indore" } });
+    await api.call("PUT", "/api/reviews/location", { token: t.token, body: { accountId: "111", locationId: "222" } });
 
     const first = (await api.call("GET", "/api/reviews", { token: t.token })).body.reviews;
     assert.equal(first.length, 2);
@@ -133,7 +136,7 @@ describe("google reviews", () => {
   it("disconnects, revokes at Google, and clears stored reviews", async () => {
     revokedTokens = [];
     const t = await connectedTenant("rv_disc");
-    await api.call("PUT", "/api/reviews/location", { token: t.token, body: { accountId: "111", locationId: "222", title: "Smile Dental, Indore" } });
+    await api.call("PUT", "/api/reviews/location", { token: t.token, body: { accountId: "111", locationId: "222" } });
     await api.call("GET", "/api/reviews", { token: t.token });
 
     const out = await api.call("DELETE", "/api/reviews", { token: t.token });

@@ -34,9 +34,9 @@ export const locations = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const choose = asyncHandler(async (req: Request, res: Response) => {
-  const { accountId, locationId, title } = req.body ?? {};
-  if (!isNonEmptyString(accountId) || !isNonEmptyString(locationId) || !isNonEmptyString(title)) throw badRequest("missing_location");
-  await reviews.chooseLocation(req.tenantId!, accountId, locationId, title);
+  const { accountId, locationId } = req.body ?? {};
+  if (!isNonEmptyString(accountId) || !isNonEmptyString(locationId)) throw badRequest("missing_location");
+  await reviews.chooseLocation(req.tenantId!, accountId, locationId);
   await reviews.syncReviews(req.tenantId!).catch(() => undefined);
   res.json({ status: await reviews.getStatus(req.tenantId!) });
 });

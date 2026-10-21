@@ -168,10 +168,13 @@ export async function listLocations(tenantId: string): Promise<GoogleLocation[]>
   return lists.flat();
 }
 
-export async function chooseLocation(tenantId: string, accountId: string, locationId: string, title: string): Promise<void> {
+export async function chooseLocation(tenantId: string, accountId: string, locationId: string): Promise<void> {
+  const known = await listLocations(tenantId);
+  const match = known.find((l) => l.accountId === accountId && l.locationId === locationId);
+  if (!match) throw badRequest("unknown_location");
   await query(
     `update google_business_connections set account_id = $2, location_id = $3, location_name = $4 where tenant_id = $1`,
-    [tenantId, accountId, locationId, title]
+    [tenantId, accountId, locationId, match.title]
   );
 }
 
