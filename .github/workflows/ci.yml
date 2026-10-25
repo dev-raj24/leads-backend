@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: leadworks
+          POSTGRES_PASSWORD: leadworks
+          POSTGRES_DB: leadworks_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U leadworks"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://leadworks:leadworks@localhost:5432/leadworks_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - run: yarn tsc --noEmit
+      - run: yarn test
+      - run: yarn audit --level high
