@@ -3,10 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "security-check": "node scripts/security-check.js",
+    "predev": "node scripts/security-check.js",
+    "prebuild": "node scripts/security-check.js",
     "dev": "node init && ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "node init && tsc",
     "worker": "ts-node-dev --respawn --transpile-only src/worker.ts",
-    "start:worker": "node dist/worker.js",
+    "start:worker": "node init && node dist/worker.js",
     "prestart": "yarn build",
     "start": "node init && node dist/server.js",
     "migrate": "ts-node --transpile-only scripts/migrate.ts",
@@ -25,6 +28,7 @@
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
+    "node-fetch": "^3.3.2",
     "nodemailer": "^10.3.1",
     "pg": "^8.11.5",
     "rate-limit-redis": "^6.0.1"
