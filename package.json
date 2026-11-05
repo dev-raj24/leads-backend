@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "security-check": "node scripts/security-check.js",
+    "predev": "node scripts/security-check.js",
+    "prebuild": "node scripts/security-check.js",
     "dev": "node init && ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "node init && tsc",
     "worker": "ts-node-dev --respawn --transpile-only src/worker.ts",
