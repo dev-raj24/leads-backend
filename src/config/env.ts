@@ -44,10 +44,9 @@ export const env = {
     authBase: process.env.GOOGLE_AUTH_BASE ?? "https://accounts.google.com/o/oauth2/v2/auth",
     tokenBase: process.env.GOOGLE_TOKEN_BASE ?? "https://oauth2.googleapis.com",
     apiBase: process.env.GOOGLE_API_BASE ?? "https://www.googleapis.com",
-    accountsBase: process.env.GOOGLE_ACCOUNTS_BASE ?? "https://mybusinessaccountmanagement.googleapis.com/v1",
-    businessInfoBase: process.env.GOOGLE_BUSINESS_INFO_BASE ?? "https://mybusinessbusinessinformation.googleapis.com/v1",
-    myBusinessBase: process.env.GOOGLE_MY_BUSINESS_BASE ?? "https://mybusiness.googleapis.com/v4",
   },
+  serpApiKey: process.env.SERPAPI_KEY ?? "",
+  serpApiBase: process.env.SERPAPI_BASE ?? "https://serpapi.com/search",
   redisUrl: process.env.REDIS_URL ?? "",
   quietHours: process.env.QUIET_HOURS !== "off" && nodeEnv !== "test",
   razorpay: {
@@ -61,6 +60,9 @@ export const env = {
   },
   get googleConfigured() {
     return Boolean(this.google.clientId && this.google.clientSecret);
+  },
+  get serpApiConfigured() {
+    return Boolean(this.serpApiKey);
   },
   get selfServePro() {
     return !isProd && !this.billingConfigured;

@@ -1,7 +1,7 @@
 import { sendHeadsUps } from "../services/followup-heads-up.service";
 import { runDueFollowups } from "../services/followup-runner.service";
 import { captureRankSnapshot, listTrackedTenants as listRankTenants } from "../services/search-console.service";
-import { listTrackedTenants as listReviewTenants, syncReviews } from "../services/google-reviews.service";
+import { listTrackedTenants as listReviewTenants, syncReviews } from "../services/review-source.service";
 
 const INTERVAL_MS = 60_000;
 const REVIEW_POLL_MS = 15 * 60_000;
